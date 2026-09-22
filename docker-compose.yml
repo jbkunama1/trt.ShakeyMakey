@@ -1,0 +1,16 @@
+# docker-compose.yml fuer Portainer - Stack aus GHCR-Image beziehen
+services:
+  shakeymakey:
+    image: ghcr.io/jbkunama1/trt.shakeymakey:latest
+    container_name: shakeymakey
+    restart: unless-stopped
+    ports:
+      - "8091:80"
+    volumes:
+      - shakeymakey_data:/data
+    environment:
+      - TEAMSHAKE_DB=/data/teamshake.db
+      - TEAMSHAKE_MAX_DRAWS=50
+
+volumes:
+  shakeymakey_data:

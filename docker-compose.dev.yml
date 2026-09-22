@@ -1,0 +1,17 @@
+# docker-compose.dev.yml - lokal bauen und testen (ohne GHCR)
+services:
+  shakeymakey:
+    build: .
+    image: trt.shakeymakey:dev
+    container_name: shakeymakey_dev
+    restart: unless-stopped
+    ports:
+      - "8091:80"
+    volumes:
+      - shakeymakey_dev_data:/data
+    environment:
+      - TEAMSHAKE_DB=/data/teamshake.db
+      - TEAMSHAKE_MAX_DRAWS=50
+
+volumes:
+  shakeymakey_dev_data:
