@@ -1,5 +1,5 @@
 # docker-compose.yml fuer Portainer - Stack aus GHCR-Image beziehen
-# Nutzt das externe Docker-Netzwerk "higfishNetwork" (muss in Portainer/Docker
+# Nutzt das externe Docker-Netzwerk "highfishNetwork" (muss in Portainer/Docker
 # bereits existieren, z.B. fuer Reverse-Proxy/andere Services im selben Netz).
 services:
   shakeymakey:
@@ -18,10 +18,10 @@ services:
       - TELEGRAM_BOT_TOKEN=
       - TELEGRAM_ALLOWED_IDS=
     networks:
-      - higfishNetwork
+      - highfishNetwork
 
 networks:
-  higfishNetwork:
+  highfishNetwork:
     external: true
 
 volumes:
