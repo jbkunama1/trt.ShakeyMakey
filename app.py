@@ -10,6 +10,8 @@ MAX_DRAWS_PER_CLASS = int(os.environ.get("TEAMSHAKE_MAX_DRAWS", "50"))
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
+GENDER_LABELS = {"m": "Jungen", "w": "Mädchen", "d": "Divers"}
+
 
 def get_db():
     db = getattr(g, "_database", None)
@@ -26,6 +28,12 @@ def close_db(exception):
     db = getattr(g, "_database", None)
     if db is not None:
         db.close()
+
+
+def _add_column_if_missing(conn, table, column, coldef):
+    cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
 
 
 def init_db():
@@ -62,6 +70,13 @@ def init_db():
     )
     conn.commit()
 
+    # Migration: optionale Felder fuer Staerke-/Geschlechterausgleich
+    # (Achtergarde-Sportmethodik: leistungsausgleichende & geschlechterbewusste Teams)
+    _add_column_if_missing(conn, "students", "strength", "INTEGER DEFAULT 3")
+    _add_column_if_missing(conn, "students", "gender", "TEXT")
+    _add_column_if_missing(conn, "draws", "balance", "TEXT DEFAULT 'random'")
+    conn.commit()
+
     cur = conn.execute("SELECT COUNT(*) FROM classes")
     if cur.fetchone()[0] == 0:
         conn.execute(
@@ -92,6 +107,92 @@ def enforce_draw_limit(db, class_id):
             """,
             (class_id, overflow),
         )
+
+
+def compute_team_count(mode, param, total):
+    if mode == "size":
+        return max(1, -(-total // param))  # ceil division
+    return min(param, total)
+
+
+def snake_distribute(items, team_count):
+    """Schlangenverteilung: gleicht Summen eines Merkmals (z.B. Staerke) zwischen Teams aus."""
+    teams = [[] for _ in range(team_count)]
+    idx = 0
+    direction = 1
+    for item in items:
+        teams[idx].append(item)
+        idx += direction
+        if idx == team_count:
+            idx = team_count - 1
+            direction = -1
+        elif idx < 0:
+            idx = 0
+            direction = 1
+    return teams
+
+
+def round_robin_distribute(items, team_count, start_offset=0):
+    teams = [[] for _ in range(team_count)]
+    for i, item in enumerate(items):
+        teams[(i + start_offset) % team_count].append(item)
+    return teams
+
+
+def names_only(teams):
+    return [[s["name"] for s in team] for team in teams]
+
+
+def shake_random(students, team_count):
+    shuffled = students[:]
+    random.shuffle(shuffled)
+    teams = round_robin_distribute(shuffled, team_count)
+    return names_only(teams), None
+
+
+def shake_strength(students, team_count):
+    pool = students[:]
+    random.shuffle(pool)  # Gleichstand zufaellig auflösen
+    pool.sort(key=lambda s: s["strength"] if s["strength"] is not None else 3, reverse=True)
+    teams = snake_distribute(pool, team_count)
+    return names_only(teams), None
+
+
+def shake_gender_mixed(students, team_count):
+    groups = {}
+    for s in students:
+        key = s["gender"] if s["gender"] in ("m", "w", "d") else "unbekannt"
+        groups.setdefault(key, []).append(s)
+
+    teams = [[] for _ in range(team_count)]
+    offset = 0
+    for key, members in groups.items():
+        random.shuffle(members)
+        sub_teams = round_robin_distribute(members, team_count, start_offset=offset)
+        for i in range(team_count):
+            teams[i].extend(sub_teams[i])
+        offset += len(members) % team_count
+    return names_only(teams), None
+
+
+def shake_gender_separate(students, mode, param):
+    groups = {}
+    for s in students:
+        key = s["gender"] if s["gender"] in ("m", "w", "d") else "unbekannt"
+        groups.setdefault(key, []).append(s)
+
+    all_teams = []
+    labels = []
+    for key in sorted(groups.keys()):
+        members = groups[key][:]
+        random.shuffle(members)
+        tc = compute_team_count(mode, param, len(members))
+        sub_teams = round_robin_distribute(members, tc)
+        label = GENDER_LABELS.get(key, "Ohne Angabe")
+        for i, team in enumerate(sub_teams, start=1):
+            all_teams.append([s["name"] for s in team])
+            labels.append(f"{label} {i}" if len(sub_teams) > 1 else label)
+    return all_teams, labels
 
 
 # ---------- Classes ----------
@@ -161,28 +262,83 @@ def delete_class(class_id):
 def list_students(class_id):
     db = get_db()
     rows = db.execute(
-        "SELECT id, name FROM students WHERE class_id = ? ORDER BY id", (class_id,)
+        "SELECT id, name, strength, gender FROM students WHERE class_id = ? ORDER BY id",
+        (class_id,),
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+
+def _normalize_gender(value):
+    if value in ("m", "w", "d"):
+        return value
+    return None
+
+
+def _normalize_strength(value):
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return 3
+    return max(1, min(5, v))
 
 
 @app.route("/api/classes/<int:class_id>/students", methods=["POST"])
 def add_students(class_id):
     data = request.get_json(force=True)
-    names = data.get("names")
-    if names is None:
+    raw_names = data.get("names")
+    entries = []
+    if raw_names is not None:
+        for item in raw_names:
+            if isinstance(item, dict):
+                nm = (item.get("name") or "").strip()
+                if nm:
+                    entries.append(
+                        (nm, _normalize_strength(item.get("strength")), _normalize_gender(item.get("gender")))
+                    )
+            else:
+                nm = str(item).strip()
+                if nm:
+                    entries.append((nm, 3, None))
+    else:
         single = (data.get("name") or "").strip()
-        names = [single] if single else []
-    names = [n.strip() for n in names if n and n.strip()]
-    if not names:
+        if single:
+            entries.append((single, _normalize_strength(data.get("strength")), _normalize_gender(data.get("gender"))))
+
+    if not entries:
         return jsonify({"error": "Kein gültiger Name"}), 400
     db = get_db()
     db.executemany(
-        "INSERT INTO students (class_id, name) VALUES (?, ?)",
-        [(class_id, n) for n in names],
+        "INSERT INTO students (class_id, name, strength, gender) VALUES (?, ?, ?, ?)",
+        [(class_id, n, s, gd) for n, s, gd in entries],
     )
     db.commit()
-    return jsonify({"added": len(names)}), 201
+    return jsonify({"added": len(entries)}), 201
+
+
+@app.route("/api/students/<int:student_id>", methods=["PUT"])
+def update_student(student_id):
+    data = request.get_json(force=True)
+    db = get_db()
+    fields = []
+    values = []
+    if "name" in data:
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "Name darf nicht leer sein"}), 400
+        fields.append("name = ?")
+        values.append(name)
+    if "strength" in data:
+        fields.append("strength = ?")
+        values.append(_normalize_strength(data.get("strength")))
+    if "gender" in data:
+        fields.append("gender = ?")
+        values.append(_normalize_gender(data.get("gender")))
+    if not fields:
+        return jsonify({"error": "Keine Aenderung angegeben"}), 400
+    values.append(student_id)
+    db.execute(f"UPDATE students SET {', '.join(fields)} WHERE id = ?", values)
+    db.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/students/<int:student_id>", methods=["DELETE"])
@@ -207,40 +363,53 @@ def clear_students(class_id):
 def shake(class_id):
     data = request.get_json(force=True)
     mode = data.get("mode", "count")  # "count" or "size"
+    balance = data.get("balance", "random")  # random | strength | gender_mixed | gender_separate
     param = int(data.get("param", 2))
     if param < 1:
         param = 1
 
     db = get_db()
-    students = db.execute(
-        "SELECT name FROM students WHERE class_id = ?", (class_id,)
+    rows = db.execute(
+        "SELECT id, name, strength, gender FROM students WHERE class_id = ?", (class_id,)
     ).fetchall()
-    names = [r["name"] for r in students]
+    students = [dict(r) for r in rows]
 
-    if len(names) < 2:
+    if len(students) < 2:
         return jsonify({"error": "Mindestens 2 Namen erforderlich"}), 400
 
-    shuffled = names[:]
-    random.shuffle(shuffled)
-
-    if mode == "size":
-        team_count = max(1, -(-len(shuffled) // param))  # ceil division
+    labels = None
+    if balance == "strength":
+        team_count = compute_team_count(mode, param, len(students))
+        teams, labels = shake_strength(students, team_count)
+    elif balance == "gender_mixed":
+        if not any(s["gender"] for s in students):
+            return jsonify({"error": "Kein Geschlecht hinterlegt. Bitte bei Namen ergänzen."}), 400
+        team_count = compute_team_count(mode, param, len(students))
+        teams, labels = shake_gender_mixed(students, team_count)
+    elif balance == "gender_separate":
+        if not any(s["gender"] for s in students):
+            return jsonify({"error": "Kein Geschlecht hinterlegt. Bitte bei Namen ergänzen."}), 400
+        teams, labels = shake_gender_separate(students, mode, param)
     else:
-        team_count = min(param, len(shuffled))
-
-    teams = [[] for _ in range(team_count)]
-    for idx, name in enumerate(shuffled):
-        teams[idx % team_count].append(name)
+        balance = "random"
+        team_count = compute_team_count(mode, param, len(students))
+        teams, labels = shake_random(students, team_count)
 
     created_at = datetime.utcnow().isoformat()
+    payload = {"teams": teams}
+    if labels:
+        payload["labels"] = labels
     db.execute(
-        "INSERT INTO draws (class_id, created_at, mode, param, teams_json) VALUES (?, ?, ?, ?, ?)",
-        (class_id, created_at, mode, param, json.dumps(teams, ensure_ascii=False)),
+        "INSERT INTO draws (class_id, created_at, mode, param, teams_json, balance) VALUES (?, ?, ?, ?, ?, ?)",
+        (class_id, created_at, mode, param, json.dumps(payload, ensure_ascii=False), balance),
     )
     enforce_draw_limit(db, class_id)
     db.commit()
 
-    return jsonify({"teams": teams, "created_at": created_at})
+    result = {"teams": teams, "created_at": created_at, "balance": balance}
+    if labels:
+        result["labels"] = labels
+    return jsonify(result)
 
 
 @app.route("/api/classes/<int:class_id>/history", methods=["GET"])
@@ -248,7 +417,7 @@ def history(class_id):
     db = get_db()
     rows = db.execute(
         """
-        SELECT id, created_at, mode, param, teams_json
+        SELECT id, created_at, mode, param, teams_json, balance
         FROM draws
         WHERE class_id = ?
         ORDER BY id DESC
@@ -258,15 +427,18 @@ def history(class_id):
     ).fetchall()
     result = []
     for r in rows:
-        result.append(
-            {
-                "id": r["id"],
-                "created_at": r["created_at"],
-                "mode": r["mode"],
-                "param": r["param"],
-                "teams": json.loads(r["teams_json"]),
-            }
-        )
+        payload = json.loads(r["teams_json"])
+        entry = {
+            "id": r["id"],
+            "created_at": r["created_at"],
+            "mode": r["mode"],
+            "param": r["param"],
+            "balance": r["balance"] or "random",
+            "teams": payload.get("teams", payload) if isinstance(payload, dict) else payload,
+        }
+        if isinstance(payload, dict) and payload.get("labels"):
+            entry["labels"] = payload["labels"]
+        result.append(entry)
     return jsonify(result)
 
 
