@@ -40,8 +40,10 @@
   .btn-secondary{background:#334155; color:var(--text);}
   .btn-danger{background:var(--danger); color:white;}
   .btn-small{padding:8px 10px; font-size:0.8rem;}
-  .name-list{list-style:none; padding:0; margin:0; max-height:220px; overflow-y:auto;}
-  .name-list li{display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:8px 10px; border-radius:8px; margin-bottom:6px; font-size:0.9rem;}
+  .name-list{list-style:none; padding:0; margin:0; max-height:280px; overflow-y:auto;}
+  .name-list li{display:flex; justify-content:space-between; align-items:center; gap:6px; background:#0f172a; padding:8px 10px; border-radius:8px; margin-bottom:6px; font-size:0.85rem; flex-wrap:wrap;}
+  .name-list li .nm{flex:1; min-width:80px;}
+  .name-list li select{width:auto; margin:0; padding:4px 6px; font-size:0.75rem;}
   .name-list li button{background:none; color:var(--danger); font-size:1rem; padding:0 6px;}
   .shake-btn{display:block; width:100%; padding:20px; font-size:1.3rem; border-radius:16px; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#0f172a; margin:16px 0; box-shadow:0 4px 14px rgba(56,189,248,0.4);}
   .shake-btn.shaking{animation:shake .5s ease;}
@@ -64,6 +66,9 @@
   .toast{position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#1e293b; color:var(--text); padding:10px 18px; border-radius:20px; font-size:0.85rem; box-shadow:0 4px 12px rgba(0,0,0,0.4); z-index:100; opacity:0; transition:opacity .3s;}
   .toast.show{opacity:1;}
   #installBtn{display:none; position:fixed; top:12px; right:12px; z-index:50; padding:8px 14px; font-size:0.8rem; background:var(--accent2); color:#0f172a; border-radius:20px; box-shadow:0 2px 8px rgba(0,0,0,0.4);}
+  .balance-options{display:grid; grid-template-columns:1fr 1fr; gap:6px;}
+  .balance-options button{font-size:0.78rem; padding:10px 6px;}
+  .info-box{background:#0f172a; border-radius:8px; padding:8px 10px; font-size:0.75rem; color:var(--muted); margin-top:8px;}
 </style>
 </head>
 <body>
@@ -72,7 +77,7 @@
 
 <header>
   <h1>🎲 ShakeyMakey</h1>
-  <p>Klassen verwalten &middot; Teams zufällig auslosen &middot; SQLite-Verlauf</p>
+  <p>Klassen verwalten &middot; Teams zufällig oder ausgeglichen auslosen</p>
 </header>
 
 <div class="container">
@@ -112,6 +117,7 @@ Chris, Dana; Elif ..."></textarea>
 
     <div class="card">
       <h2>Teilnehmer <span class="count-badge" id="countBadge">0</span></h2>
+      <p class="muted">Optional: Stärke (1-5) und Geschlecht pro Name hinterlegen, um Teams später ausgeglichen auslosen zu können.</p>
       <ul class="name-list" id="nameList"></ul>
       <button class="btn-danger btn-small" id="clearAllBtn" style="margin-top:10px; width:100%;">Alle Namen löschen</button>
     </div>
@@ -122,7 +128,17 @@ Chris, Dana; Elif ..."></textarea>
     <div class="card">
       <h2>Einstellungen</h2>
       <label>Aktuelle Klasse: <b id="activeClassLabel">-</b> (<span id="activeCount">0</span> Teilnehmer)</label>
-      <label>Modus</label>
+
+      <label style="margin-top:6px;">Aufteilung nach</label>
+      <div class="balance-options">
+        <button id="balRandomBtn" class="tab-active btn-small">🎲 Zufällig</button>
+        <button id="balStrengthBtn" class="tab-inactive btn-small">💪 Stärke ausgleichen</button>
+        <button id="balGenderMixedBtn" class="tab-inactive btn-small">⚧ Geschlecht mischen</button>
+        <button id="balGenderSepBtn" class="tab-inactive btn-small">🚹 Geschlecht trennen</button>
+      </div>
+      <div class="info-box" id="balanceInfo">Rein zufällige Verteilung auf die gewünschte Teamanzahl/-größe.</div>
+
+      <label style="margin-top:10px;">Modus</label>
       <div class="row">
         <button id="modeCountBtn" class="tab-active btn-small">Anzahl Teams</button>
         <button id="modeSizeBtn" class="tab-inactive btn-small">Teamgröße</button>
@@ -155,12 +171,20 @@ const API = "/api";
 let classes = [];
 let activeClassId = null;
 let mode = 'count';
+let balance = 'random';
+
+const BALANCE_INFO = {
+  random: "Rein zufällige Verteilung auf die gewünschte Teamanzahl/-größe.",
+  strength: "Gleicht die hinterlegte Stärke (1-5) zwischen den Teams aus (Schlangenverteilung). Namen ohne Angabe zählen als Stärke 3.",
+  gender_mixed: "Verteilt Jungen/Mädchen/Divers möglichst gleichmäßig auf alle Teams. Erfordert hinterlegtes Geschlecht bei mind. einem Namen.",
+  gender_separate: "Bildet für jedes Geschlecht eigene Teams (z.B. reine Jungen- und reine Mädchenteams). Erfordert hinterlegtes Geschlecht."
+};
 
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 2000);
+  setTimeout(()=>t.classList.remove('show'), 2500);
 }
 
 async function api(path, options={}){
@@ -200,19 +224,50 @@ function refreshClassSelect(){
   });
 }
 
+function genderSelectHtml(current){
+  const opts = [["", "–"], ["m", "Junge"], ["w", "Mädchen"], ["d", "Divers"]];
+  return opts.map(([v,l]) => `<option value="${v}" ${v===(current||"")?"selected":""}>${l}</option>`).join('');
+}
+
+function strengthSelectHtml(current){
+  let out = '';
+  for(let i=1;i<=5;i++){
+    out += `<option value="${i}" ${i===current?"selected":""}>★${i}</option>`;
+  }
+  return out;
+}
+
 async function loadStudents(){
   const students = await api('/classes/' + activeClassId + '/students');
   const list = document.getElementById('nameList');
   list.innerHTML = '';
   students.forEach(s=>{
     const li = document.createElement('li');
-    const span = document.createElement('span'); span.textContent = s.name;
-    const btn = document.createElement('button'); btn.textContent = '✕';
-    btn.onclick = async ()=>{
+
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name;
+
+    const strengthSel = document.createElement('select');
+    strengthSel.innerHTML = strengthSelectHtml(s.strength || 3);
+    strengthSel.onchange = async ()=>{
+      await api('/students/' + s.id, {method:'PUT', body: JSON.stringify({strength: parseInt(strengthSel.value,10)})});
+    };
+
+    const genderSel = document.createElement('select');
+    genderSel.innerHTML = genderSelectHtml(s.gender);
+    genderSel.onchange = async ()=>{
+      await api('/students/' + s.id, {method:'PUT', body: JSON.stringify({gender: genderSel.value || null})});
+    };
+
+    const delBtn = document.createElement('button'); delBtn.textContent = '✕';
+    delBtn.onclick = async ()=>{
       await api('/students/' + s.id, {method:'DELETE'});
       await refreshAll();
     };
-    li.appendChild(span); li.appendChild(btn);
+
+    li.appendChild(nm);
+    li.appendChild(strengthSel);
+    li.appendChild(genderSel);
+    li.appendChild(delBtn);
     list.appendChild(li);
   });
   document.getElementById('countBadge').textContent = students.length;
@@ -321,7 +376,26 @@ tabs.classes.onclick = ()=> activateTab('classes');
 tabs.shake.onclick = async ()=>{ activateTab('shake'); await loadStudents(); };
 tabs.history.onclick = async ()=>{ activateTab('history'); await loadHistory(); };
 
-// ---------- Shake mode ----------
+// ---------- Balance mode (Achtergarde/Sportmethodik: zufällig, Stärke, Geschlecht) ----------
+const balButtons = {
+  random: document.getElementById('balRandomBtn'),
+  strength: document.getElementById('balStrengthBtn'),
+  gender_mixed: document.getElementById('balGenderMixedBtn'),
+  gender_separate: document.getElementById('balGenderSepBtn')
+};
+function setBalance(key){
+  balance = key;
+  Object.keys(balButtons).forEach(k=>{
+    balButtons[k].className = (k===key) ? 'tab-active btn-small' : 'tab-inactive btn-small';
+  });
+  document.getElementById('balanceInfo').textContent = BALANCE_INFO[key];
+}
+balButtons.random.onclick = ()=> setBalance('random');
+balButtons.strength.onclick = ()=> setBalance('strength');
+balButtons.gender_mixed.onclick = ()=> setBalance('gender_mixed');
+balButtons.gender_separate.onclick = ()=> setBalance('gender_separate');
+
+// ---------- Shake mode (Anzahl vs. Groesse) ----------
 const modeCountBtn = document.getElementById('modeCountBtn');
 const modeSizeBtn = document.getElementById('modeSizeBtn');
 const numLabel = document.getElementById('numLabel');
@@ -338,7 +412,7 @@ modeSizeBtn.onclick = ()=>{
 
 const teamColors = ['#38bdf8','#f472b6','#facc15','#4ade80','#a78bfa','#fb923c','#2dd4bf','#f87171','#818cf8','#e879f9'];
 
-function renderTeams(container, teams){
+function renderTeams(container, teams, labels){
   container.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'teams-grid';
@@ -347,7 +421,8 @@ function renderTeams(container, teams){
     card.className = 'team-card';
     card.style.background = teamColors[idx % teamColors.length];
     const h3 = document.createElement('h3');
-    h3.textContent = 'Team ' + (idx+1) + ' (' + team.length + ')';
+    const title = (labels && labels[idx]) ? labels[idx] : ('Team ' + (idx+1));
+    h3.textContent = title + ' (' + team.length + ')';
     const ul = document.createElement('ul');
     team.forEach(name=>{
       const li = document.createElement('li'); li.textContent = name;
@@ -371,9 +446,9 @@ document.getElementById('shakeBtn').onclick = async ()=>{
   try{
     const result = await api('/classes/' + activeClassId + '/shake', {
       method:'POST',
-      body: JSON.stringify({mode: mode, param: num})
+      body: JSON.stringify({mode: mode, param: num, balance: balance})
     });
-    renderTeams(document.getElementById('resultsArea'), result.teams);
+    renderTeams(document.getElementById('resultsArea'), result.teams, result.labels);
   }catch(e){
     showToast(e.message);
   }finally{
@@ -387,6 +462,7 @@ async function loadHistory(){
   document.getElementById('historyCount').textContent = rows.length;
   const area = document.getElementById('historyArea');
   area.innerHTML = '';
+  const balanceNames = {random:'Zufällig', strength:'Stärke ausgeglichen', gender_mixed:'Geschlecht gemischt', gender_separate:'Geschlecht getrennt'};
   rows.forEach(row=>{
     const div = document.createElement('div');
     div.className = 'history-item';
@@ -394,12 +470,14 @@ async function loadHistory(){
     meta.className = 'meta';
     const dt = new Date(row.created_at + 'Z');
     const modeLabel = row.mode === 'size' ? (row.param + ' pro Team') : (row.param + ' Teams');
-    meta.textContent = '#' + row.id + ' — ' + dt.toLocaleString('de-DE') + ' — ' + modeLabel;
+    const balLabel = balanceNames[row.balance] || row.balance;
+    meta.textContent = '#' + row.id + ' — ' + dt.toLocaleString('de-DE') + ' — ' + modeLabel + ' — ' + balLabel;
     div.appendChild(meta);
     row.teams.forEach((team, idx)=>{
       const line = document.createElement('div');
       line.className = 'team-line';
-      line.textContent = 'Team ' + (idx+1) + ': ' + team.join(', ');
+      const label = (row.labels && row.labels[idx]) ? row.labels[idx] : ('Team ' + (idx+1));
+      line.textContent = label + ': ' + team.join(', ');
       div.appendChild(line);
     });
     area.appendChild(div);
