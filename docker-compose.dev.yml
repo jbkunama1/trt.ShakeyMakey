@@ -12,6 +12,8 @@ services:
     environment:
       - TEAMSHAKE_DB=/data/teamshake.db
       - TEAMSHAKE_MAX_DRAWS=50
+      - TELEGRAM_BOT_TOKEN=
+      - TELEGRAM_ALLOWED_IDS=
 
 volumes:
   shakeymakey_dev_data:

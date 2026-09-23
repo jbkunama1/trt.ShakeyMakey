@@ -12,6 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
+COPY bot.py .
 COPY static ./static
 
 COPY docker/nginx.conf /etc/nginx/nginx.conf
@@ -19,6 +20,8 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 ENV TEAMSHAKE_DB=/data/teamshake.db
 ENV TEAMSHAKE_MAX_DRAWS=50
+ENV TELEGRAM_BOT_TOKEN=""
+ENV TELEGRAM_ALLOWED_IDS=""
 
 RUN mkdir -p /data
 VOLUME ["/data"]

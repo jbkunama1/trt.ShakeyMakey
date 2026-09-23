@@ -11,6 +11,10 @@ services:
     environment:
       - TEAMSHAKE_DB=/data/teamshake.db
       - TEAMSHAKE_MAX_DRAWS=50
+      # Telegram-Bot (optional): Token von @BotFather, Liste erlaubter
+      # Telegram-User-IDs kommagetrennt. Leer lassen = Bot bleibt aus.
+      - TELEGRAM_BOT_TOKEN=
+      - TELEGRAM_ALLOWED_IDS=
 
 volumes:
   shakeymakey_data:
