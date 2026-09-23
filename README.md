@@ -11,6 +11,8 @@ Container Registry).
 - Mehrere Klassen (Listen) anlegen, umbenennen, löschen
 - Namen einzeln eingeben oder als Text-Import (Zeilenumbruch / Komma / Semikolon)
 - Teams per Zufall auslosen: Modus "Anzahl Teams" oder "Teilnehmer pro Team"
+- **Vier Aufteilungsmethoden**: Zufällig, Stärke ausgleichen, Geschlecht mischen,
+  Geschlecht trennen (siehe Abschnitt 6, angelehnt an Sportmethodik/Achtergarde)
 - Jede Auslosung wird in SQLite gespeichert; pro Klasse bleiben automatisch nur
   die letzten **50 Auslosungen** erhalten (Round-Robin-Löschung der ältesten)
 - Verlaufs-Ansicht mit Zeitstempel je Auslosung
@@ -157,12 +159,14 @@ mit der ergänzten ID neu deployen (Environment-Wert ändern → Update the stac
 | `/hilfe` | Befehlsübersicht |
 | `/klassen` | Alle Klassen auflisten |
 | `/klasse <Name>` | Klasse aktivieren oder neu anlegen |
-| `/namen` | Namen der aktiven Klasse anzeigen |
+| `/namen` | Namen der aktiven Klasse anzeigen (inkl. Stärke/Geschlecht) |
 | `/add <Name1, Name2, ...>` | Namen hinzufügen (kommagetrennt) |
 | `/entfernen <Name>` | Einen Namen aus der aktiven Klasse entfernen |
 | `/leeren` | Alle Namen der aktiven Klasse löschen |
-| `/shake <Anzahl Teams>` | Teams zufällig auslosen (Modus "Anzahl") |
-| `/groesse <Spieler pro Team>` | Teams nach Gruppengröße auslosen |
+| `/staerke <Name> <1-5>` | Spielstärke einer Person setzen |
+| `/geschlecht <Name> <m\|w\|d>` | Geschlecht einer Person setzen |
+| `/shake <Anzahl> [zufall\|staerke\|geschlecht\|trennen]` | Teams nach Anzahl auslosen |
+| `/groesse <ProTeam> [zufall\|staerke\|geschlecht\|trennen]` | Teams nach Gruppengröße auslosen |
 | `/verlauf [n]` | Letzte n Auslosungen anzeigen (Standard 5, max. 20) |
 
 Jede per Bot ausgelöste Auslosung landet in derselben SQLite-Datenbank und
@@ -173,6 +177,31 @@ Web-Oberfläche und Telegram greifen auf identische Daten zu.
 > Arbeitsspeicher. Nach einem Container-Neustart ist wieder die erste Klasse
 > aktiv - mit `/klasse <Name>` einfach erneut wählen.
 
+## 6. Team-Aufteilungsmethoden (Sportmethodik / Achtergarde)
+
+Zusätzlich zur reinen Zufallsauslosung unterstützt ShakeyMakey drei weitere,
+in der Sportpädagogik dokumentierte Methoden zur fairen Teambildung (u. a.
+beschrieben im Sportmethodenhandbuch von Frank Achtergarde sowie in der
+Team-Bildungs-Theorie auf sportunterricht.ch) - jeweils digital nachgebildet,
+um die klassischen Nachteile (z. B. Bloßstellung leistungsschwacher Schüler
+beim "Wählen lassen") zu vermeiden:
+
+| Modus | Beschreibung | Voraussetzung |
+|---|---|---|
+| 🎲 Zufällig | Reine Zufallsverteilung (Standard) | - |
+| 💪 Stärke ausgleichen | Schlangenverteilung nach hinterlegter Spielstärke (1-5), sodass jedes Team eine ähnliche Gesamtstärke hat | Stärke pro Name optional hinterlegt (Standard: 3) |
+| ⚧ Geschlecht mischen | Verteilt Jungen/Mädchen/Divers gleichmäßig auf alle Teams (wie beim "Team Creator") | Geschlecht bei mind. einem Namen hinterlegt |
+| 🚹 Geschlecht trennen | Bildet eigene, geschlechtsreine Teams (z. B. reine Jungen- und reine Mädchenteams) | Geschlecht bei mind. einem Namen hinterlegt |
+
+In der Web-Oberfläche lassen sich Stärke (★1-★5) und Geschlecht direkt in der
+Namensliste je Person per Dropdown setzen; im Telegram-Bot über `/staerke`
+und `/geschlecht`. Beim Auslosen (`/shake`, `/groesse` bzw. der Shake-Ansicht)
+wird die gewünschte Methode einfach mit ausgewählt/angehängt.
+
+> Wird "Geschlecht mischen" oder "Geschlecht trennen" gewählt, aber bei
+> keiner Person ein Geschlecht hinterlegt, meldet die App/der Bot einen
+> Hinweis statt eine sinnlose Verteilung durchzuführen.
+
 ## API-Übersicht
 
 | Methode | Pfad | Zweck |
@@ -181,11 +210,12 @@ Web-Oberfläche und Telegram greifen auf identische Daten zu.
 | POST | /api/classes | Klasse anlegen `{name}` |
 | PUT | /api/classes/<id> | Klasse umbenennen `{name}` |
 | DELETE | /api/classes/<id> | Klasse löschen |
-| GET | /api/classes/<id>/students | Namen einer Klasse |
-| POST | /api/classes/<id>/students | Namen hinzufügen `{name}` oder `{names:[...]}` |
+| GET | /api/classes/<id>/students | Namen einer Klasse (inkl. strength, gender) |
+| POST | /api/classes/<id>/students | Namen hinzufügen `{name}` oder `{names:[...]}` (Strings oder `{name, strength, gender}`-Objekte) |
+| PUT | /api/students/<id> | Name/Stärke/Geschlecht einer Person ändern |
 | DELETE | /api/students/<id> | Einzelnen Namen löschen |
 | DELETE | /api/classes/<id>/students | Alle Namen einer Klasse löschen |
-| POST | /api/classes/<id>/shake | Auslosung `{mode: "count"|"size", param: n}` |
+| POST | /api/classes/<id>/shake | Auslosung `{mode: "count"\|"size", param: n, balance: "random"\|"strength"\|"gender_mixed"\|"gender_separate"}` |
 | GET | /api/classes/<id>/history | Letzte Auslosungen (max. `TEAMSHAKE_MAX_DRAWS`) |
 | DELETE | /api/classes/<id>/history | Verlauf einer Klasse löschen |
 | GET | /healthz | Healthcheck (auch vom Docker-Healthcheck genutzt) |

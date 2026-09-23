@@ -16,6 +16,20 @@ bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 # Merkt sich pro Chat, welche Klasse gerade aktiv ist (Reset bei Container-Neustart)
 active_class = {}
 
+GENDER_MAP = {"m": "m", "junge": "m", "jungen": "m", "w": "w", "maedchen": "w", "mädchen": "w", "d": "d", "divers": "d"}
+BALANCE_ALIASES = {
+    "zufall": "random", "zufaellig": "random", "random": "random",
+    "staerke": "strength", "stärke": "strength", "strength": "strength",
+    "geschlecht": "gender_mixed", "mix": "gender_mixed", "gender_mixed": "gender_mixed",
+    "trennen": "gender_separate", "getrennt": "gender_separate", "gender_separate": "gender_separate",
+}
+BALANCE_LABELS = {
+    "random": "Zufällig",
+    "strength": "Stärke ausgeglichen",
+    "gender_mixed": "Geschlecht gemischt",
+    "gender_separate": "Geschlecht getrennt",
+}
+
 
 def is_allowed(user_id):
     if not ALLOWED_IDS:
@@ -92,11 +106,25 @@ def class_label(cid):
     return "?"
 
 
-def format_teams(teams):
+def format_teams(teams, labels=None):
     lines = []
     for idx, team in enumerate(teams, start=1):
-        lines.append(f"<b>Team {idx}</b> ({len(team)}): " + ", ".join(team))
+        title = labels[idx - 1] if labels and idx - 1 < len(labels) else f"Team {idx}"
+        lines.append(f"<b>{title}</b> ({len(team)}): " + ", ".join(team))
     return "\n".join(lines)
+
+
+def parse_shake_args(raw):
+    """Erwartet z.B. '4' oder '4 staerke' oder '4 geschlecht'."""
+    parts = raw.split()
+    if not parts or not parts[0].isdigit():
+        return None, None
+    number = int(parts[0])
+    balance = "random"
+    if len(parts) > 1:
+        key = parts[1].lower()
+        balance = BALANCE_ALIASES.get(key, "random")
+    return number, balance
 
 
 @bot.message_handler(commands=["id"])
@@ -114,10 +142,17 @@ def cmd_help(message):
         "/add &lt;Name1, Name2, ...&gt; - Namen hinzufügen\n"
         "/entfernen &lt;Name&gt; - einen Namen entfernen\n"
         "/leeren - alle Namen der aktiven Klasse löschen\n"
-        "/shake &lt;Anzahl Teams&gt; - Teams zufällig auslosen\n"
-        "/groesse &lt;Spieler pro Team&gt; - nach Gruppengröße auslosen\n"
+        "/staerke &lt;Name&gt; &lt;1-5&gt; - Stärke setzen\n"
+        "/geschlecht &lt;Name&gt; &lt;m|w|d&gt; - Geschlecht setzen\n"
+        "/shake &lt;Anzahl&gt; [zufall|staerke|geschlecht|trennen] - Teams nach Anzahl auslosen\n"
+        "/groesse &lt;ProTeam&gt; [zufall|staerke|geschlecht|trennen] - nach Gruppengröße auslosen\n"
         "/verlauf [n] - letzte Auslosungen anzeigen (Standard 5)\n"
-        "/id - deine Telegram-ID anzeigen (für TELEGRAM_ALLOWED_IDS)\n"
+        "/id - deine Telegram-ID anzeigen (für TELEGRAM_ALLOWED_IDS)\n\n"
+        "Aufteilungs-Optionen (nach Sportmethodik, z.B. Achtergarde):\n"
+        "• <b>zufall</b> - rein zufällig (Standard)\n"
+        "• <b>staerke</b> - gleicht hinterlegte Spielstärke (1-5) zwischen Teams aus\n"
+        "• <b>geschlecht</b> - verteilt Jungen/Mädchen gleichmäßig auf alle Teams\n"
+        "• <b>trennen</b> - bildet reine Jungen- und reine Mädchenteams\n"
     )
     bot.reply_to(message, text)
     if not is_allowed(message.from_user.id):
@@ -164,7 +199,11 @@ def cmd_names(message):
     if not students:
         bot.reply_to(message, f"Klasse '{label}': keine Namen.")
         return
-    lines = [s["name"] for s in students]
+    gender_symbol = {"m": "♂", "w": "♀", "d": "⚧"}
+    lines = []
+    for s in students:
+        sym = gender_symbol.get(s.get("gender"), "")
+        lines.append(f"{s['name']} (★{s.get('strength', 3)}{(' ' + sym) if sym else ''})")
     bot.reply_to(message, f"👥 Klasse '{label}' ({len(lines)}):\n" + "\n".join(lines))
 
 
@@ -215,34 +254,84 @@ def cmd_clear(message):
     bot.reply_to(message, "🗑️ Alle Namen dieser Klasse gelöscht.")
 
 
-@bot.message_handler(commands=["shake"])
+@bot.message_handler(commands=["staerke"])
 @require_auth
-def cmd_shake(message):
-    arg = message.text.partition(" ")[2].strip()
-    if not arg.isdigit():
-        bot.reply_to(message, "Nutzung: /shake <Anzahl Teams>")
+def cmd_strength(message):
+    parts = message.text.partition(" ")[2].strip().rsplit(" ", 1)
+    if len(parts) != 2 or not parts[1].isdigit():
+        bot.reply_to(message, "Nutzung: /staerke <Name> <1-5>")
+        return
+    name, value = parts[0].strip(), int(parts[1])
+    cid = get_active_class_id(message.chat.id)
+    if cid is None:
+        bot.reply_to(message, "Keine aktive Klasse.")
+        return
+    students = api_get(f"/classes/{cid}/students")
+    match = next((s for s in students if s["name"].lower() == name.lower()), None)
+    if not match:
+        bot.reply_to(message, f"'{name}' nicht gefunden.")
+        return
+    api_put(f"/students/{match['id']}", {"strength": value})
+    bot.reply_to(message, f"✅ Stärke von '{name}' auf {max(1, min(5, value))} gesetzt.")
+
+
+@bot.message_handler(commands=["geschlecht"])
+@require_auth
+def cmd_gender(message):
+    parts = message.text.partition(" ")[2].strip().rsplit(" ", 1)
+    if len(parts) != 2:
+        bot.reply_to(message, "Nutzung: /geschlecht <Name> <m|w|d>")
+        return
+    name, value = parts[0].strip(), parts[1].strip().lower()
+    gender = GENDER_MAP.get(value)
+    if not gender:
+        bot.reply_to(message, "Ungültiges Geschlecht. Erlaubt: m, w, d")
         return
     cid = get_active_class_id(message.chat.id)
     if cid is None:
         bot.reply_to(message, "Keine aktive Klasse.")
         return
-    result = api_post(f"/classes/{cid}/shake", {"mode": "count", "param": int(arg)})
-    bot.reply_to(message, "🎲 " + format_teams(result["teams"]))
+    students = api_get(f"/classes/{cid}/students")
+    match = next((s for s in students if s["name"].lower() == name.lower()), None)
+    if not match:
+        bot.reply_to(message, f"'{name}' nicht gefunden.")
+        return
+    api_put(f"/students/{match['id']}", {"gender": gender})
+    bot.reply_to(message, f"✅ Geschlecht von '{name}' gesetzt.")
+
+
+@bot.message_handler(commands=["shake"])
+@require_auth
+def cmd_shake(message):
+    raw = message.text.partition(" ")[2].strip()
+    number, balance = parse_shake_args(raw)
+    if number is None:
+        bot.reply_to(message, "Nutzung: /shake <Anzahl Teams> [zufall|staerke|geschlecht|trennen]")
+        return
+    cid = get_active_class_id(message.chat.id)
+    if cid is None:
+        bot.reply_to(message, "Keine aktive Klasse.")
+        return
+    result = api_post(f"/classes/{cid}/shake", {"mode": "count", "param": number, "balance": balance})
+    header = f"🎲 <i>{BALANCE_LABELS.get(balance, balance)}</i>\n"
+    bot.reply_to(message, header + format_teams(result["teams"], result.get("labels")))
 
 
 @bot.message_handler(commands=["groesse"])
 @require_auth
 def cmd_shake_size(message):
-    arg = message.text.partition(" ")[2].strip()
-    if not arg.isdigit():
-        bot.reply_to(message, "Nutzung: /groesse <Spieler pro Team>")
+    raw = message.text.partition(" ")[2].strip()
+    number, balance = parse_shake_args(raw)
+    if number is None:
+        bot.reply_to(message, "Nutzung: /groesse <Spieler pro Team> [zufall|staerke|geschlecht|trennen]")
         return
     cid = get_active_class_id(message.chat.id)
     if cid is None:
         bot.reply_to(message, "Keine aktive Klasse.")
         return
-    result = api_post(f"/classes/{cid}/shake", {"mode": "size", "param": int(arg)})
-    bot.reply_to(message, "🎲 " + format_teams(result["teams"]))
+    result = api_post(f"/classes/{cid}/shake", {"mode": "size", "param": number, "balance": balance})
+    header = f"🎲 <i>{BALANCE_LABELS.get(balance, balance)}</i>\n"
+    bot.reply_to(message, header + format_teams(result["teams"], result.get("labels")))
 
 
 @bot.message_handler(commands=["verlauf"])
@@ -261,7 +350,11 @@ def cmd_history(message):
         return
     parts = []
     for entry in history_rows:
-        parts.append(f"#{entry['id']} ({entry['created_at']}):\n" + format_teams(entry["teams"]))
+        bal_label = BALANCE_LABELS.get(entry.get("balance", "random"), entry.get("balance"))
+        parts.append(
+            f"#{entry['id']} ({entry['created_at']}, {bal_label}):\n"
+            + format_teams(entry["teams"], entry.get("labels"))
+        )
     bot.reply_to(message, "\n\n".join(parts))
 
 
