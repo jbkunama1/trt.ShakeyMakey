@@ -1,187 +1,263 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang='de'>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, viewport-fit=cover'>
 <title>ShakeyMakey - Team Zufallsgenerator</title>
-<meta name="theme-color" content="#38bdf8">
-<meta name="description" content="ShakeyMakey - zufällige Team-Auslosung für Klassen, Gruppen und Turniere.">
-<link rel="manifest" href="/manifest.json">
-<link rel="icon" href="/icons/icon-192.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/icons/icon-192.svg">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ShakeyMakey">
+<meta name='theme-color' content='#38bdf8'>
+<meta name='description' content='ShakeyMakey - zufällige Team-Auslosung für Klassen, Gruppen und Turniere.'>
+<link rel='manifest' href='/manifest.json'>
+<link rel='icon' href='/icons/icon-192.svg' type='image/svg+xml'>
+<link rel='apple-touch-icon' href='/icons/icon-192.svg'>
+<meta name='apple-mobile-web-app-capable' content='yes'>
+<meta name='apple-mobile-web-app-status-bar-style' content='black-translucent'>
+<meta name='apple-mobile-web-app-title' content='ShakeyMakey'>
 <style>
   :root{
     --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --accent2:#f472b6;
     --text:#f1f5f9; --muted:#94a3b8; --danger:#ef4444; --good:#22c55e;
   }
-  *{box-sizing:border-box;}
-  body{margin:0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); padding-bottom:80px;}
-  header{padding:16px; text-align:center; background:linear-gradient(135deg,#0ea5e9,#f472b6);}
-  header h1{margin:0; font-size:1.4rem;}
-  header p{margin:4px 0 0; font-size:0.8rem; opacity:0.9;}
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); padding-bottom:120px;}
+  header{padding:10px 14px; padding-top:calc(10px + env(safe-area-inset-top)); background:linear-gradient(135deg,#0ea5e9,#f472b6);}
+  .hdr{max-width:600px; margin:0 auto; display:flex; align-items:center; justify-content:space-between;}
+  header h1{margin:0; font-size:1.25rem;}
+  .icon-btn{background:rgba(15,23,42,0.35); color:#fff; width:44px; height:44px; padding:0; font-size:1.3rem; border-radius:50%;}
   .container{max-width:600px; margin:0 auto; padding:12px;}
   .card{background:var(--card); border-radius:14px; padding:14px; margin-bottom:14px; box-shadow:0 2px 8px rgba(0,0,0,0.3);}
   .card h2{margin:0 0 10px; font-size:1rem; color:var(--accent);}
   label{display:block; font-size:0.8rem; color:var(--muted); margin-bottom:4px;}
-  select, input[type=text], input[type=number], textarea{
-    width:100%; padding:10px; border-radius:8px; border:1px solid #334155;
+  select, input[type=text], textarea{
+    width:100%; min-height:44px; padding:10px; border-radius:8px; border:1px solid #334155;
     background:#0f172a; color:var(--text); font-size:1rem; margin-bottom:10px;
   }
-  textarea{resize:vertical; min-height:70px;}
+  textarea{resize:vertical; min-height:80px;}
   .row{display:flex; gap:8px;}
   .row > *{flex:1;}
-  button{border:none; border-radius:10px; padding:12px 14px; font-size:0.95rem; font-weight:600; cursor:pointer; transition:transform .1s;}
+  button{border:none; border-radius:10px; padding:12px 14px; min-height:44px; font-size:0.95rem; font-weight:600; cursor:pointer; transition:transform .1s; color:var(--text); background:#334155;}
   button:active{transform:scale(0.96);}
   button:disabled{opacity:0.5; cursor:not-allowed;}
   .btn-primary{background:var(--accent); color:#0f172a; width:100%;}
   .btn-secondary{background:#334155; color:var(--text);}
   .btn-danger{background:var(--danger); color:white;}
-  .btn-small{padding:8px 10px; font-size:0.8rem;}
-  .name-list{list-style:none; padding:0; margin:0; max-height:280px; overflow-y:auto;}
-  .name-list li{display:flex; justify-content:space-between; align-items:center; gap:6px; background:#0f172a; padding:8px 10px; border-radius:8px; margin-bottom:6px; font-size:0.85rem; flex-wrap:wrap;}
-  .name-list li .nm{flex:1; min-width:80px;}
-  .name-list li select{width:auto; margin:0; padding:4px 6px; font-size:0.75rem;}
-  .name-list li button{background:none; color:var(--danger); font-size:1rem; padding:0 6px;}
-  .shake-btn{display:block; width:100%; padding:20px; font-size:1.3rem; border-radius:16px; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#0f172a; margin:16px 0; box-shadow:0 4px 14px rgba(56,189,248,0.4);}
+  .btn-small{padding:8px 10px; font-size:0.85rem;}
+  .chips{display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin-bottom:6px;}
+  .chip{flex:0 0 auto; border-radius:22px; padding:10px 16px; background:#334155; color:var(--text); font-size:0.9rem;}
+  .chip.active{background:var(--accent); color:#0f172a;}
+  .seg{display:flex; background:#0f172a; border-radius:12px; padding:4px; gap:4px; margin:10px 0;}
+  .seg button{flex:1; background:transparent; color:var(--muted);}
+  .seg button.active{background:var(--accent); color:#0f172a;}
+  .stepper{display:flex; align-items:center; justify-content:center; gap:18px; margin:6px 0;}
+  .stepper button{width:56px; height:56px; border-radius:50%; font-size:1.7rem; padding:0;}
+  .stepper .num{font-size:2.4rem; font-weight:700; min-width:70px; text-align:center;}
+  .center{text-align:center;}
+  .shake-bar{position:fixed; left:0; right:0; bottom:0; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(rgba(15,23,42,0), var(--bg) 35%); display:flex; justify-content:center; z-index:40;}
+  .shake-btn{display:block; width:100%; max-width:576px; padding:18px; min-height:64px; font-size:1.3rem; border-radius:16px; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#0f172a; box-shadow:0 4px 14px rgba(56,189,248,0.4);}
   .shake-btn.shaking{animation:shake .5s ease;}
   @keyframes shake{10%,90%{transform:translate3d(-2px,0,0);}20%,80%{transform:translate3d(4px,0,0);}30%,50%,70%{transform:translate3d(-8px,0,0);}40%,60%{transform:translate3d(8px,0,0);}}
-  .teams-grid{display:grid; grid-template-columns:1fr; gap:10px;}
+  .teams-grid{display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:12px;}
   @media(min-width:480px){.teams-grid{grid-template-columns:1fr 1fr;}}
   .team-card{border-radius:12px; padding:12px; color:#0f172a; font-weight:600;}
   .team-card h3{margin:0 0 8px; font-size:1rem;}
-  .team-card ul{margin:0; padding-left:18px; font-weight:400; font-size:0.9rem;}
+  .team-card ul{margin:0; padding-left:18px; font-weight:400; font-size:0.95rem;}
   .tabs{display:flex; gap:6px; margin-bottom:12px;}
-  .tabs button{flex:1;}
+  .tabs button{flex:1; padding:10px 4px; font-size:0.85rem;}
   .tab-active{background:var(--accent) !important; color:#0f172a !important;}
   .tab-inactive{background:#334155; color:var(--text);}
   .muted{color:var(--muted); font-size:0.8rem;}
   .count-badge{display:inline-block; background:#0f172a; color:var(--accent); border-radius:20px; padding:2px 10px; font-size:0.8rem; margin-left:6px;}
+  .name-list{list-style:none; padding:0; margin:0; max-height:55vh; overflow-y:auto;}
+  .name-list li{display:flex; align-items:center; gap:6px; background:#0f172a; padding:8px 10px; border-radius:8px; margin-bottom:6px; font-size:0.95rem; flex-wrap:wrap;}
+  .name-list li .nm{flex:1; min-width:90px;}
+  .name-list li select{width:auto; margin:0; padding:4px 6px; font-size:0.85rem;}
+  .name-list li button{background:none; color:var(--danger); font-size:1.1rem; padding:0 10px;}
+  details.card summary{cursor:pointer; font-weight:600; color:var(--accent); min-height:36px; display:flex; align-items:center;}
+  details.card[open] summary{margin-bottom:10px;}
   .history-item{background:#0f172a; border-radius:10px; padding:10px; margin-bottom:8px; font-size:0.85rem;}
   .history-item .meta{color:var(--muted); font-size:0.75rem; margin-bottom:6px;}
   .history-item .team-line{margin:2px 0;}
-  footer{text-align:center; color:var(--muted); font-size:0.75rem; padding:10px;}
-  .toast{position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#1e293b; color:var(--text); padding:10px 18px; border-radius:20px; font-size:0.85rem; box-shadow:0 4px 12px rgba(0,0,0,0.4); z-index:100; opacity:0; transition:opacity .3s;}
+  .info-box{background:#0f172a; border-radius:8px; padding:8px 10px; font-size:0.78rem; color:var(--muted); margin:4px 0;}
+  .admin-top{display:flex; align-items:center; gap:12px; margin-bottom:12px;}
+  .admin-top h2{margin:0; font-size:1.2rem;}
+  .danger-zone{border:1px solid var(--danger);}
+  .danger-zone h2{color:var(--danger);}
+  .danger-zone button{width:100%; margin-bottom:8px;}
+  .empty{text-align:center; color:var(--muted);}
+  .toast{position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:#1e293b; color:var(--text); padding:10px 18px; border-radius:20px; font-size:0.85rem; box-shadow:0 4px 12px rgba(0,0,0,0.4); z-index:100; opacity:0; transition:opacity .3s; pointer-events:none;}
   .toast.show{opacity:1;}
-  #installBtn{display:none; position:fixed; top:12px; right:12px; z-index:50; padding:8px 14px; font-size:0.8rem; background:var(--accent2); color:#0f172a; border-radius:20px; box-shadow:0 2px 8px rgba(0,0,0,0.4);}
-  .balance-options{display:grid; grid-template-columns:1fr 1fr; gap:6px;}
-  .balance-options button{font-size:0.78rem; padding:10px 6px;}
-  .info-box{background:#0f172a; border-radius:8px; padding:8px 10px; font-size:0.75rem; color:var(--muted); margin-top:8px;}
+  #installBtn{display:none; width:100%; background:var(--accent2); color:#0f172a;}
 </style>
 </head>
 <body>
 
-<button id="installBtn">📲 Installieren</button>
-
 <header>
-  <h1>🎲 ShakeyMakey</h1>
-  <p>Klassen verwalten &middot; Teams zufällig oder ausgeglichen auslosen</p>
+  <div class='hdr'>
+    <h1>🎲 ShakeyMakey</h1>
+    <button id='adminBtn' class='icon-btn' aria-label='Admin-Menü öffnen'>⚙️</button>
+  </div>
 </header>
 
-<div class="container">
+<!-- ===================== START: SHAKE ===================== -->
+<div class='container' id='viewShake'>
+  <div class='card'>
+    <label for='quickClass'>Klasse</label>
+    <select id='quickClass'></select>
 
-  <div class="tabs">
-    <button id="tabClasses" class="tab-active">Klassen &amp; Namen</button>
-    <button id="tabShake" class="tab-inactive">Shake</button>
-    <button id="tabHistory" class="tab-inactive">Verlauf</button>
+    <label>Aufteilung</label>
+    <div class='chips' id='balanceChips'>
+      <button class='chip active' data-bal='random'>🎲 Zufall</button>
+      <button class='chip' data-bal='strength'>💪 Stärke</button>
+      <button class='chip' data-bal='gender_mixed'>⚧ Mix</button>
+      <button class='chip' data-bal='gender_separate'>🚹 Getrennt</button>
+    </div>
+    <div class='info-box' id='balanceInfo'></div>
+
+    <div class='seg'>
+      <button id='modeCountBtn' class='active'>Teams</button>
+      <button id='modeSizeBtn'>Je Team</button>
+    </div>
+    <div class='stepper'>
+      <button id='numMinus' aria-label='weniger'>−</button>
+      <div class='num' id='numValue'>2</div>
+      <button id='numPlus' aria-label='mehr'>+</button>
+    </div>
+    <div class='muted center' id='numLabel'>Anzahl Teams</div>
+    <div class='muted center' id='classInfo' style='margin-top:6px;'></div>
   </div>
 
-  <!-- ===================== KLASSEN & NAMEN TAB ===================== -->
-  <div id="viewClasses">
-    <div class="card">
-      <h2>Klasse auswählen / anlegen</h2>
-      <div class="row">
-        <select id="classSelect"></select>
-        <button class="btn-secondary btn-small" id="newClassBtn">+ Neu</button>
-      </div>
-      <div class="row">
-        <button class="btn-danger btn-small" id="deleteClassBtn">Klasse löschen</button>
-        <button class="btn-secondary btn-small" id="renameClassBtn">Umbenennen</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Namen hinzufügen</h2>
-      <div class="row">
-        <input type="text" id="nameInput" placeholder="Name eingeben und Enter drücken">
-        <button class="btn-primary btn-small" id="addNameBtn" style="flex:0 0 70px;">+ Add</button>
-      </div>
-      <label>Oder mehrere Namen importieren (einer pro Zeile, Komma oder Semikolon)</label>
-      <textarea id="importArea" placeholder="Anna
-Ben
-Chris, Dana; Elif ..."></textarea>
-      <button class="btn-secondary" id="importBtn" style="width:100%;">Namen importieren</button>
-    </div>
-
-    <div class="card">
-      <h2>Teilnehmer <span class="count-badge" id="countBadge">0</span></h2>
-      <p class="muted">Optional: Stärke (1-5) und Geschlecht pro Name hinterlegen, um Teams später ausgeglichen auslosen zu können.</p>
-      <ul class="name-list" id="nameList"></ul>
-      <button class="btn-danger btn-small" id="clearAllBtn" style="margin-top:10px; width:100%;">Alle Namen löschen</button>
-    </div>
+  <div class='card empty' id='emptyNotice' style='display:none;'>
+    <p>Noch zu wenige Namen in dieser Klasse (mindestens 2 nötig).</p>
+    <button id='toAdminBtn' class='btn-secondary'>Namen im Admin-Menü hinzufügen</button>
   </div>
 
-  <!-- ===================== SHAKE TAB ===================== -->
-  <div id="viewShake" style="display:none;">
-    <div class="card">
-      <h2>Einstellungen</h2>
-      <label>Aktuelle Klasse: <b id="activeClassLabel">-</b> (<span id="activeCount">0</span> Teilnehmer)</label>
-
-      <label style="margin-top:6px;">Aufteilung nach</label>
-      <div class="balance-options">
-        <button id="balRandomBtn" class="tab-active btn-small">🎲 Zufällig</button>
-        <button id="balStrengthBtn" class="tab-inactive btn-small">💪 Stärke ausgleichen</button>
-        <button id="balGenderMixedBtn" class="tab-inactive btn-small">⚧ Geschlecht mischen</button>
-        <button id="balGenderSepBtn" class="tab-inactive btn-small">🚹 Geschlecht trennen</button>
-      </div>
-      <div class="info-box" id="balanceInfo">Rein zufällige Verteilung auf die gewünschte Teamanzahl/-größe.</div>
-
-      <label style="margin-top:10px;">Modus</label>
-      <div class="row">
-        <button id="modeCountBtn" class="tab-active btn-small">Anzahl Teams</button>
-        <button id="modeSizeBtn" class="tab-inactive btn-small">Teamgröße</button>
-      </div>
-      <label id="numLabel" style="margin-top:10px;">Anzahl Teams</label>
-      <input type="number" id="teamNumberInput" min="1" max="64" value="2">
-    </div>
-
-    <button class="shake-btn" id="shakeBtn">🎲 SHAKE!</button>
-    <div id="resultsArea"></div>
+  <div class='muted' id='resultNote' style='margin:0 2px 8px;'></div>
+  <div id='resultsArea'></div>
+  <div class='row' id='shareRow' style='display:none; margin-bottom:14px;'>
+    <button id='shareBtn' class='btn-secondary'>📋 Kopieren / Teilen</button>
   </div>
 
-  <!-- ===================== HISTORY TAB ===================== -->
-  <div id="viewHistory" style="display:none;">
-    <div class="card">
-      <h2>Verlauf <span class="count-badge" id="historyCount">0</span></h2>
-      <p class="muted">Es werden die letzten 50 Auslosungen pro Klasse dauerhaft in SQLite gespeichert. Ältere Einträge werden automatisch (Round-Robin) gelöscht.</p>
-      <button class="btn-danger btn-small" id="clearHistoryBtn" style="width:100%;">Verlauf dieser Klasse löschen</button>
-    </div>
-    <div id="historyArea"></div>
-  </div>
-
+  <details class='card' id='recentDetails'>
+    <summary>Letzte Auslosungen <span class='count-badge' id='recentCount'>0</span></summary>
+    <div id='recentArea'></div>
+  </details>
 </div>
 
-<footer>ShakeyMakey &middot; Daten werden dauerhaft in SQLite auf dem Server gespeichert</footer>
-<div class="toast" id="toast"></div>
+<div class='shake-bar' id='shakeBar'>
+  <button class='shake-btn' id='shakeBtn'>🎲 SHAKE!</button>
+</div>
+
+<!-- ===================== ADMIN ===================== -->
+<div class='container' id='viewAdmin' style='display:none;'>
+  <div class='admin-top'>
+    <button id='backBtn' class='btn-secondary'>← Shake</button>
+    <h2>Admin</h2>
+  </div>
+
+  <div class='tabs' id='adminTabs'>
+    <button data-tab='classes' class='tab-active'>Klassen</button>
+    <button data-tab='students' class='tab-inactive'>Teilnehmer</button>
+    <button data-tab='history' class='tab-inactive'>Verlauf</button>
+    <button data-tab='app' class='tab-inactive'>App</button>
+  </div>
+
+  <section id='adm-classes'>
+    <div class='card'>
+      <h2>Klasse auswählen / anlegen</h2>
+      <select id='classSelect'></select>
+      <div class='row'>
+        <button class='btn-secondary' id='newClassBtn'>+ Neue Klasse</button>
+        <button class='btn-secondary' id='renameClassBtn'>Umbenennen</button>
+      </div>
+    </div>
+  </section>
+
+  <section id='adm-students' style='display:none;'>
+    <div class='card'>
+      <h2>Namen hinzufügen</h2>
+      <div class='row'>
+        <input type='text' id='nameInput' placeholder='Name eingeben'>
+        <button class='btn-primary' id='addNameBtn' style='flex:0 0 90px;'>+ Add</button>
+      </div>
+      <label for='importArea'>Mehrere Namen importieren (eine Zeile pro Name, Komma oder Semikolon)</label>
+      <textarea id='importArea' placeholder='Anna, Ben, Chris; Dana'></textarea>
+      <button class='btn-secondary' id='importBtn' style='width:100%;'>Namen importieren</button>
+    </div>
+    <div class='card'>
+      <h2>Teilnehmer <span class='count-badge' id='countBadge'>0</span></h2>
+      <p class='muted'>Optional: Stärke (1-5) und Geschlecht pro Name hinterlegen, um Teams ausgeglichen auszulosen.</p>
+      <ul class='name-list' id='nameList'></ul>
+    </div>
+  </section>
+
+  <section id='adm-history' style='display:none;'>
+    <div class='card'>
+      <h2>Verlauf <span class='count-badge' id='historyCount'>0</span></h2>
+      <p class='muted'>Es werden die letzten 50 Auslosungen pro Klasse dauerhaft in SQLite gespeichert. Ältere Einträge werden automatisch gelöscht.</p>
+    </div>
+    <div id='historyArea'></div>
+  </section>
+
+  <section id='adm-app' style='display:none;'>
+    <div class='card'>
+      <h2>App installieren</h2>
+      <button id='installBtn'>📲 Installieren</button>
+      <p class='muted'>iPhone/iPad: Teilen-Symbol in Safari, dann „Zum Home-Bildschirm“. Android/Chrome: Menü, dann „App installieren“.</p>
+    </div>
+    <div class='card'>
+      <h2>Info</h2>
+      <p class='muted'>ShakeyMakey speichert Klassen, Namen und Verlauf dauerhaft in SQLite auf dem Server. Deine Einstellungen (Klasse, Aufteilung, Anzahl) merkt sich nur dieses Gerät.</p>
+    </div>
+  </section>
+
+  <div class='card danger-zone'>
+    <h2>⚠️ Gefahrenzone</h2>
+    <button class='btn-danger' id='clearAllBtn'>Alle Namen dieser Klasse löschen</button>
+    <button class='btn-danger' id='clearHistoryBtn'>Verlauf dieser Klasse löschen</button>
+    <button class='btn-danger' id='deleteClassBtn'>Klasse löschen</button>
+  </div>
+</div>
+
+<div class='toast' id='toast'></div>
 
 <script>
-const API = "/api";
-let classes = [];
-let activeClassId = null;
-let mode = 'count';
-let balance = 'random';
+const API = '/api';
+const STORE_KEY = 'shakeymakey.v2';
+const $ = (id) => document.getElementById(id);
 
 const BALANCE_INFO = {
-  random: "Rein zufällige Verteilung auf die gewünschte Teamanzahl/-größe.",
-  strength: "Gleicht die hinterlegte Stärke (1-5) zwischen den Teams aus (Schlangenverteilung). Namen ohne Angabe zählen als Stärke 3.",
-  gender_mixed: "Verteilt Jungen/Mädchen/Divers möglichst gleichmäßig auf alle Teams. Erfordert hinterlegtes Geschlecht bei mind. einem Namen.",
-  gender_separate: "Bildet für jedes Geschlecht eigene Teams (z.B. reine Jungen- und reine Mädchenteams). Erfordert hinterlegtes Geschlecht."
+  random: 'Rein zufällige Verteilung auf die gewünschte Teamanzahl/-größe.',
+  strength: 'Gleicht die hinterlegte Stärke (1-5) zwischen den Teams aus (Schlangenverteilung). Namen ohne Angabe zählen als Stärke 3.',
+  gender_mixed: 'Verteilt Jungen/Mädchen/Divers möglichst gleichmäßig auf alle Teams. Erfordert hinterlegtes Geschlecht bei mind. einem Namen.',
+  gender_separate: 'Bildet für jedes Geschlecht eigene Teams. Die Zahl gilt pro Gruppe (3 bei Jungen und Mädchen = 6 Teams). Erfordert hinterlegtes Geschlecht.'
 };
+const balanceNames = {random:'Zufällig', strength:'Stärke ausgeglichen', gender_mixed:'Geschlecht gemischt', gender_separate:'Geschlecht getrennt'};
+const teamColors = ['#38bdf8','#f472b6','#facc15','#4ade80','#a78bfa','#fb923c','#2dd4bf','#f87171','#818cf8','#e879f9'];
+
+let classes = [];
+let activeClassId = null;
+let studentCount = 0;
+let mode = 'count';
+let balance = 'random';
+let num = 2;
+let lastResult = null;
+let recentRows = [];
+
+// ---------- Einstellungen merken ----------
+function loadPrefs(){
+  try{
+    const p = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    if(Number.isInteger(p.classId)) activeClassId = p.classId;
+    if(p.mode === 'count' || p.mode === 'size') mode = p.mode;
+    if(BALANCE_INFO[p.balance]) balance = p.balance;
+    if(Number.isInteger(p.num) && p.num >= 1 && p.num <= 64) num = p.num;
+  }catch(e){}
+}
+function savePrefs(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify({classId: activeClassId, mode: mode, balance: balance, num: num})); }catch(e){}
+}
 
 function showToast(msg){
-  const t = document.getElementById('toast');
+  const t = $('toast');
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2500);
@@ -200,6 +276,13 @@ async function api(path, options={}){
   return res.json();
 }
 
+function guard(fn){
+  return async (...args)=>{
+    try{ await fn(...args); }catch(e){ showToast(e.message || 'Fehler'); }
+  };
+}
+
+// ---------- Klassen ----------
 async function loadClasses(){
   classes = await api('/classes');
   if(classes.length === 0){
@@ -209,37 +292,62 @@ async function loadClasses(){
   if(!activeClassId || !classes.find(c=>c.id===activeClassId)){
     activeClassId = classes[0].id;
   }
-  refreshClassSelect();
+  savePrefs();
+  refreshClassSelects();
 }
 
-function refreshClassSelect(){
-  const sel = document.getElementById('classSelect');
-  sel.innerHTML = '';
-  classes.forEach(c=>{
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.name + ' (' + c.student_count + ')';
-    if(c.id === activeClassId) opt.selected = true;
-    sel.appendChild(opt);
+function refreshClassSelects(){
+  ['quickClass','classSelect'].forEach(id=>{
+    const sel = $(id);
+    sel.innerHTML = '';
+    classes.forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name + ' (' + c.student_count + ')';
+      if(c.id === activeClassId) opt.selected = true;
+      sel.appendChild(opt);
+    });
   });
 }
 
+function clearResult(){
+  lastResult = null;
+  $('resultsArea').innerHTML = '';
+  $('resultNote').textContent = '';
+  $('shareRow').style.display = 'none';
+}
+
+async function setActiveClass(id){
+  activeClassId = id;
+  savePrefs();
+  clearResult();
+  await loadStudents();
+  await loadRecent();
+  showLastDraw();
+}
+
+['quickClass','classSelect'].forEach(id=>{
+  $(id).addEventListener('change', guard(async (e)=>{ await setActiveClass(parseInt(e.target.value, 10)); refreshClassSelects(); }));
+});
+
+// ---------- Teilnehmer ----------
 function genderSelectHtml(current){
-  const opts = [["", "–"], ["m", "Junge"], ["w", "Mädchen"], ["d", "Divers"]];
-  return opts.map(([v,l]) => `<option value="${v}" ${v===(current||"")?"selected":""}>${l}</option>`).join('');
+  const opts = [['', '–'], ['m', 'Junge'], ['w', 'Mädchen'], ['d', 'Divers']];
+  return opts.map(([v,l]) => `<option value='${v}' ${v===(current||'')?'selected':''}>${l}</option>`).join('');
 }
 
 function strengthSelectHtml(current){
   let out = '';
   for(let i=1;i<=5;i++){
-    out += `<option value="${i}" ${i===current?"selected":""}>★${i}</option>`;
+    out += `<option value='${i}' ${i===current?'selected':''}>★${i}</option>`;
   }
   return out;
 }
 
 async function loadStudents(){
   const students = await api('/classes/' + activeClassId + '/students');
-  const list = document.getElementById('nameList');
+  studentCount = students.length;
+  const list = $('nameList');
   list.innerHTML = '';
   students.forEach(s=>{
     const li = document.createElement('li');
@@ -248,21 +356,22 @@ async function loadStudents(){
 
     const strengthSel = document.createElement('select');
     strengthSel.innerHTML = strengthSelectHtml(s.strength || 3);
-    strengthSel.onchange = async ()=>{
+    strengthSel.onchange = guard(async ()=>{
       await api('/students/' + s.id, {method:'PUT', body: JSON.stringify({strength: parseInt(strengthSel.value,10)})});
-    };
+    });
 
     const genderSel = document.createElement('select');
     genderSel.innerHTML = genderSelectHtml(s.gender);
-    genderSel.onchange = async ()=>{
+    genderSel.onchange = guard(async ()=>{
       await api('/students/' + s.id, {method:'PUT', body: JSON.stringify({gender: genderSel.value || null})});
-    };
+    });
 
     const delBtn = document.createElement('button'); delBtn.textContent = '✕';
-    delBtn.onclick = async ()=>{
+    delBtn.setAttribute('aria-label', s.name + ' entfernen');
+    delBtn.onclick = guard(async ()=>{
       await api('/students/' + s.id, {method:'DELETE'});
       await refreshAll();
-    };
+    });
 
     li.appendChild(nm);
     li.appendChild(strengthSel);
@@ -270,148 +379,129 @@ async function loadStudents(){
     li.appendChild(delBtn);
     list.appendChild(li);
   });
-  document.getElementById('countBadge').textContent = students.length;
+  $('countBadge').textContent = students.length;
+  updateShakeState();
+}
+
+function updateShakeState(){
   const cls = classes.find(c=>c.id===activeClassId);
-  document.getElementById('activeClassLabel').textContent = cls ? cls.name : '-';
-  document.getElementById('activeCount').textContent = students.length;
+  $('classInfo').textContent = (cls ? cls.name : '-') + ' · ' + studentCount + ' Teilnehmer';
+  const tooFew = studentCount < 2;
+  $('emptyNotice').style.display = tooFew ? 'block' : 'none';
+  $('shakeBtn').disabled = tooFew;
 }
 
 async function refreshAll(){
   await loadClasses();
   await loadStudents();
+  await loadRecent();
+  showLastDraw();
 }
 
-document.getElementById('classSelect').addEventListener('change', async (e)=>{
-  activeClassId = parseInt(e.target.value, 10);
-  await loadStudents();
-});
-
-document.getElementById('newClassBtn').onclick = async ()=>{
-  const name = prompt("Name der neuen Klasse:");
+$('newClassBtn').onclick = guard(async ()=>{
+  const name = prompt('Name der neuen Klasse:');
   if(name && name.trim()){
-    try{
-      const cls = await api('/classes', {method:'POST', body: JSON.stringify({name:name.trim()})});
-      activeClassId = cls.id;
-      await refreshAll();
-    }catch(e){ showToast(e.message); }
+    const cls = await api('/classes', {method:'POST', body: JSON.stringify({name:name.trim()})});
+    activeClassId = cls.id;
+    clearResult();
+    await refreshAll();
   }
-};
-
-document.getElementById('deleteClassBtn').onclick = async ()=>{
-  const cls = classes.find(c=>c.id===activeClassId);
-  if(!cls) return;
-  if(confirm('Klasse "' + cls.name + '" wirklich löschen?')){
-    try{
-      await api('/classes/' + activeClassId, {method:'DELETE'});
-      activeClassId = null;
-      await refreshAll();
-    }catch(e){ showToast(e.message); }
-  }
-};
-
-document.getElementById('renameClassBtn').onclick = async ()=>{
-  const cls = classes.find(c=>c.id===activeClassId);
-  if(!cls) return;
-  const newName = prompt("Neuer Name:", cls.name);
-  if(newName && newName.trim() && newName.trim() !== cls.name){
-    try{
-      await api('/classes/' + activeClassId, {method:'PUT', body: JSON.stringify({name:newName.trim()})});
-      await refreshAll();
-    }catch(e){ showToast(e.message); }
-  }
-};
-
-document.getElementById('addNameBtn').onclick = addNameFromInput;
-document.getElementById('nameInput').addEventListener('keydown', e=>{
-  if(e.key === 'Enter'){ addNameFromInput(); }
 });
+
+$('renameClassBtn').onclick = guard(async ()=>{
+  const cls = classes.find(c=>c.id===activeClassId);
+  if(!cls) return;
+  const newName = prompt('Neuer Name:', cls.name);
+  if(newName && newName.trim() && newName.trim() !== cls.name){
+    await api('/classes/' + activeClassId, {method:'PUT', body: JSON.stringify({name:newName.trim()})});
+    await refreshAll();
+  }
+});
+
+$('deleteClassBtn').onclick = guard(async ()=>{
+  const cls = classes.find(c=>c.id===activeClassId);
+  if(!cls) return;
+  if(confirm('Klasse „' + cls.name + '“ wirklich löschen?')){
+    await api('/classes/' + activeClassId, {method:'DELETE'});
+    activeClassId = null;
+    clearResult();
+    await refreshAll();
+  }
+});
+
 async function addNameFromInput(){
-  const input = document.getElementById('nameInput');
+  const input = $('nameInput');
   const val = input.value.trim();
   if(val){
     await api('/classes/' + activeClassId + '/students', {method:'POST', body: JSON.stringify({name: val})});
     input.value = '';
-    await loadStudents();
-    await loadClasses();
+    await refreshAll();
     input.focus();
   }
 }
+$('addNameBtn').onclick = guard(addNameFromInput);
+$('nameInput').addEventListener('keydown', e=>{
+  if(e.key === 'Enter'){ guard(addNameFromInput)(); }
+});
 
-document.getElementById('importBtn').onclick = async ()=>{
-  const area = document.getElementById('importArea');
+$('importBtn').onclick = guard(async ()=>{
+  const area = $('importArea');
   const raw = area.value;
   if(!raw.trim()) return;
-  const parts = raw.split(/[\n,;]+/).map(s=>s.trim()).filter(s=>s.length>0);
+  const parts = raw.split(/[\r\n,;]+/).map(s=>s.trim()).filter(s=>s.length>0);
   await api('/classes/' + activeClassId + '/students', {method:'POST', body: JSON.stringify({names: parts})});
   area.value = '';
   await refreshAll();
-  showToast(parts.length + " Namen importiert.");
-};
+  showToast(parts.length + ' Namen importiert.');
+});
 
-document.getElementById('clearAllBtn').onclick = async ()=>{
-  if(confirm("Wirklich alle Namen dieser Klasse löschen?")){
+$('clearAllBtn').onclick = guard(async ()=>{
+  if(confirm('Wirklich alle Namen dieser Klasse löschen?')){
     await api('/classes/' + activeClassId + '/students', {method:'DELETE'});
+    clearResult();
     await refreshAll();
   }
-};
+});
 
-// ---------- Tabs ----------
-const views = {
-  classes: document.getElementById('viewClasses'),
-  shake: document.getElementById('viewShake'),
-  history: document.getElementById('viewHistory')
-};
-const tabs = {
-  classes: document.getElementById('tabClasses'),
-  shake: document.getElementById('tabShake'),
-  history: document.getElementById('tabHistory')
-};
-function activateTab(name){
-  Object.keys(views).forEach(k=>{
-    views[k].style.display = (k===name) ? 'block' : 'none';
-    tabs[k].className = (k===name) ? 'tab-active' : 'tab-inactive';
-  });
-}
-tabs.classes.onclick = ()=> activateTab('classes');
-tabs.shake.onclick = async ()=>{ activateTab('shake'); await loadStudents(); };
-tabs.history.onclick = async ()=>{ activateTab('history'); await loadHistory(); };
+$('clearHistoryBtn').onclick = guard(async ()=>{
+  if(confirm('Verlauf dieser Klasse wirklich löschen?')){
+    await api('/classes/' + activeClassId + '/history', {method:'DELETE'});
+    await loadRecent();
+  }
+});
 
-// ---------- Balance mode (Achtergarde/Sportmethodik: zufällig, Stärke, Geschlecht) ----------
-const balButtons = {
-  random: document.getElementById('balRandomBtn'),
-  strength: document.getElementById('balStrengthBtn'),
-  gender_mixed: document.getElementById('balGenderMixedBtn'),
-  gender_separate: document.getElementById('balGenderSepBtn')
-};
+// ---------- Aufteilung / Modus / Anzahl ----------
 function setBalance(key){
   balance = key;
-  Object.keys(balButtons).forEach(k=>{
-    balButtons[k].className = (k===key) ? 'tab-active btn-small' : 'tab-inactive btn-small';
+  document.querySelectorAll('#balanceChips .chip').forEach(b=>{
+    b.classList.toggle('active', b.dataset.bal === key);
   });
-  document.getElementById('balanceInfo').textContent = BALANCE_INFO[key];
+  $('balanceInfo').textContent = BALANCE_INFO[key];
+  savePrefs();
 }
-balButtons.random.onclick = ()=> setBalance('random');
-balButtons.strength.onclick = ()=> setBalance('strength');
-balButtons.gender_mixed.onclick = ()=> setBalance('gender_mixed');
-balButtons.gender_separate.onclick = ()=> setBalance('gender_separate');
+document.querySelectorAll('#balanceChips .chip').forEach(b=>{
+  b.onclick = ()=> setBalance(b.dataset.bal);
+});
 
-// ---------- Shake mode (Anzahl vs. Groesse) ----------
-const modeCountBtn = document.getElementById('modeCountBtn');
-const modeSizeBtn = document.getElementById('modeSizeBtn');
-const numLabel = document.getElementById('numLabel');
-const teamNumberInput = document.getElementById('teamNumberInput');
+function setNum(v){
+  num = Math.max(1, Math.min(64, v));
+  $('numValue').textContent = num;
+  savePrefs();
+}
+$('numMinus').onclick = ()=> setNum(num - 1);
+$('numPlus').onclick = ()=> setNum(num + 1);
 
-modeCountBtn.onclick = ()=>{
-  mode='count'; modeCountBtn.className='tab-active btn-small'; modeSizeBtn.className='tab-inactive btn-small';
-  numLabel.textContent = 'Anzahl Teams'; teamNumberInput.value = 2;
-};
-modeSizeBtn.onclick = ()=>{
-  mode='size'; modeSizeBtn.className='tab-active btn-small'; modeCountBtn.className='tab-inactive btn-small';
-  numLabel.textContent = 'Spieler pro Team'; teamNumberInput.value = 4;
-};
+function setMode(m, resetNum){
+  mode = m;
+  $('modeCountBtn').classList.toggle('active', m === 'count');
+  $('modeSizeBtn').classList.toggle('active', m === 'size');
+  $('numLabel').textContent = (m === 'count') ? 'Anzahl Teams' : 'Spieler pro Team';
+  if(resetNum){ setNum(m === 'count' ? 2 : 4); } else { savePrefs(); }
+}
+$('modeCountBtn').onclick = ()=> setMode('count', true);
+$('modeSizeBtn').onclick = ()=> setMode('size', true);
 
-const teamColors = ['#38bdf8','#f472b6','#facc15','#4ade80','#a78bfa','#fb923c','#2dd4bf','#f87171','#818cf8','#e879f9'];
-
+// ---------- Ergebnis ----------
 function renderTeams(container, teams, labels){
   container.innerHTML = '';
   const grid = document.createElement('div');
@@ -434,44 +524,73 @@ function renderTeams(container, teams, labels){
   container.appendChild(grid);
 }
 
-document.getElementById('shakeBtn').onclick = async ()=>{
-  let num = parseInt(teamNumberInput.value, 10);
-  if(!num || num < 1) num = 1;
+function showResult(teams, labels, note){
+  renderTeams($('resultsArea'), teams, labels);
+  $('resultNote').textContent = note || '';
+  $('shareRow').style.display = 'flex';
+  lastResult = {teams: teams, labels: labels};
+}
 
-  const btn = document.getElementById('shakeBtn');
+function fmtDate(iso){
+  return new Date(iso + 'Z').toLocaleString('de-DE');
+}
+
+function showLastDraw(){
+  if(lastResult || recentRows.length === 0) return;
+  const r = recentRows[0];
+  showResult(r.teams, r.labels, 'Letzte Auslosung · ' + fmtDate(r.created_at));
+}
+
+$('shakeBtn').onclick = guard(async ()=>{
+  const btn = $('shakeBtn');
   btn.classList.add('shaking');
   btn.disabled = true;
   setTimeout(()=>btn.classList.remove('shaking'), 500);
-
   try{
     const result = await api('/classes/' + activeClassId + '/shake', {
       method:'POST',
       body: JSON.stringify({mode: mode, param: num, balance: balance})
     });
-    renderTeams(document.getElementById('resultsArea'), result.teams, result.labels);
+    showResult(result.teams, result.labels, 'Neu ausgelost · ' + (balanceNames[result.balance] || result.balance));
+    await loadRecent();
+    $('resultsArea').scrollIntoView({behavior:'smooth', block:'start'});
+  } finally {
+    btn.disabled = studentCount < 2;
+  }
+});
+
+$('shareBtn').onclick = async ()=>{
+  if(!lastResult) return;
+  const cls = classes.find(c=>c.id===activeClassId);
+  const lines = lastResult.teams.map((t, i)=>{
+    const l = (lastResult.labels && lastResult.labels[i]) ? lastResult.labels[i] : ('Team ' + (i+1));
+    return l + ': ' + t.join(', ');
+  });
+  const text = (cls ? cls.name + ' – ' : '') + 'Teams\n' + lines.join('\n');
+  try{
+    if(navigator.share){ await navigator.share({text: text}); }
+    else { await navigator.clipboard.writeText(text); showToast('In Zwischenablage kopiert.'); }
   }catch(e){
-    showToast(e.message);
-  }finally{
-    btn.disabled = false;
+    if(e.name !== 'AbortError') showToast('Kopieren nicht möglich.');
   }
 };
 
-// ---------- History ----------
-async function loadHistory(){
-  const rows = await api('/classes/' + activeClassId + '/history');
-  document.getElementById('historyCount').textContent = rows.length;
-  const area = document.getElementById('historyArea');
+// ---------- Verlauf ----------
+function renderHistory(area, rows){
   area.innerHTML = '';
-  const balanceNames = {random:'Zufällig', strength:'Stärke ausgeglichen', gender_mixed:'Geschlecht gemischt', gender_separate:'Geschlecht getrennt'};
+  if(rows.length === 0){
+    const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'Noch keine Auslosungen.';
+    area.appendChild(p);
+    return;
+  }
   rows.forEach(row=>{
     const div = document.createElement('div');
     div.className = 'history-item';
     const meta = document.createElement('div');
     meta.className = 'meta';
-    const dt = new Date(row.created_at + 'Z');
     const modeLabel = row.mode === 'size' ? (row.param + ' pro Team') : (row.param + ' Teams');
     const balLabel = balanceNames[row.balance] || row.balance;
-    meta.textContent = '#' + row.id + ' — ' + dt.toLocaleString('de-DE') + ' — ' + modeLabel + ' — ' + balLabel;
+    meta.textContent = '#' + row.id + ' — ' + fmtDate(row.created_at) + ' — ' + modeLabel + ' — ' + balLabel;
     div.appendChild(meta);
     row.teams.forEach((team, idx)=>{
       const line = document.createElement('div');
@@ -484,12 +603,38 @@ async function loadHistory(){
   });
 }
 
-document.getElementById('clearHistoryBtn').onclick = async ()=>{
-  if(confirm("Verlauf dieser Klasse wirklich löschen?")){
-    await api('/classes/' + activeClassId + '/history', {method:'DELETE'});
-    await loadHistory();
-  }
-};
+async function loadRecent(){
+  recentRows = await api('/classes/' + activeClassId + '/history');
+  $('recentCount').textContent = recentRows.length;
+  $('historyCount').textContent = recentRows.length;
+  renderHistory($('recentArea'), recentRows.slice(0, 5));
+  renderHistory($('historyArea'), recentRows);
+}
+
+// ---------- Navigation: Start (Shake) <-> Admin ----------
+function route(){
+  const admin = (location.hash === '#admin');
+  $('viewShake').style.display = admin ? 'none' : 'block';
+  $('shakeBar').style.display = admin ? 'none' : 'flex';
+  $('viewAdmin').style.display = admin ? 'block' : 'none';
+  $('adminBtn').style.display = admin ? 'none' : 'inline-block';
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
+$('adminBtn').onclick = ()=>{ location.hash = 'admin'; };
+$('backBtn').onclick = ()=>{ location.hash = ''; };
+$('toAdminBtn').onclick = ()=>{ location.hash = 'admin'; activateAdminTab('students'); };
+
+function activateAdminTab(name){
+  document.querySelectorAll('#adminTabs button').forEach(b=>{
+    const on = (b.dataset.tab === name);
+    b.className = on ? 'tab-active' : 'tab-inactive';
+    $('adm-' + b.dataset.tab).style.display = on ? 'block' : 'none';
+  });
+}
+document.querySelectorAll('#adminTabs button').forEach(b=>{
+  b.onclick = ()=> activateAdminTab(b.dataset.tab);
+});
 
 // ---------- PWA: Service Worker + Install-Prompt ----------
 if ('serviceWorker' in navigator) {
@@ -499,7 +644,7 @@ if ('serviceWorker' in navigator) {
 }
 
 let deferredPrompt = null;
-const installBtn = document.getElementById('installBtn');
+const installBtn = $('installBtn');
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
@@ -517,7 +662,12 @@ window.addEventListener('appinstalled', () => {
 });
 
 // ---------- Init ----------
-refreshAll();
+loadPrefs();
+setBalance(balance);
+setMode(mode, false);
+setNum(num);
+route();
+refreshAll().catch(e=>showToast(e.message || 'Fehler beim Laden'));
 </script>
 </body>
 </html>
