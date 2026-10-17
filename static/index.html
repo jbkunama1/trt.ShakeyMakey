@@ -41,8 +41,8 @@
   .btn-secondary{background:#334155; color:var(--text);}
   .btn-danger{background:var(--danger); color:white;}
   .btn-small{padding:8px 10px; font-size:0.85rem;}
-  .chips{display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin-bottom:6px;}
-  .chip{flex:0 0 auto; border-radius:22px; padding:10px 16px; background:#334155; color:var(--text); font-size:0.9rem;}
+  .chips{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px;}
+  .chip{border-radius:12px; padding:12px 8px; min-height:48px; background:#334155; color:var(--text); font-size:0.9rem; text-align:center;}
   .chip.active{background:var(--accent); color:#0f172a;}
   .seg{display:flex; background:#0f172a; border-radius:12px; padding:4px; gap:4px; margin:10px 0;}
   .seg button{flex:1; background:transparent; color:var(--muted);}
