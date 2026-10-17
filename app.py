@@ -2,6 +2,7 @@ import sqlite3
 import json
 import random
 import os
+import time
 import fcntl
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, g, send_from_directory
@@ -9,9 +10,16 @@ from flask import Flask, request, jsonify, g, send_from_directory
 DB_PATH = os.environ.get("TEAMSHAKE_DB", "/data/teamshake.db")
 MAX_DRAWS_PER_CLASS = int(os.environ.get("TEAMSHAKE_MAX_DRAWS", "50"))
 
+# Zusatzoptionen: Regeln (getrennt/zusammen) und Abwechslung
+RULE_WEIGHT = 1000          # Strafpunkte je verletzter Regel
+CANDIDATES = 15             # Zufalls-Startvarianten, wenn Regeln/Abwechslung aktiv sind
+RECENT_DRAWS_FOR_VARIETY = 5  # so viele letzte Auslosungen zaehlen bei "Abwechslung"
+OPTIMIZE_TIME_LIMIT = 1.5   # Sekunden fuer das Nachbessern per Tausch
+
 app = Flask(__name__, static_folder="static", static_url_path="")
 
 GENDER_LABELS = {"m": "Jungen", "w": "Mädchen", "d": "Divers"}
+PAIR_KINDS = ("apart", "together")
 
 
 def now_iso():
@@ -75,14 +83,27 @@ def _init_db_locked():
             FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS pairs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            class_id INTEGER NOT NULL,
+            a INTEGER NOT NULL,
+            b INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            UNIQUE (a, b),
+            FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+            FOREIGN KEY (a) REFERENCES students(id) ON DELETE CASCADE,
+            FOREIGN KEY (b) REFERENCES students(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_id);
         CREATE INDEX IF NOT EXISTS idx_draws_class ON draws(class_id, id);
+        CREATE INDEX IF NOT EXISTS idx_pairs_class ON pairs(class_id);
         """
     )
     conn.commit()
 
     # Migration: optionale Felder fuer Staerke-/Geschlechterausgleich
-    # (Achtergarde-Sportmethodik: leistungsausgleichende & geschlechterbewusste Teams)
+    # (Sportmethodik: leistungsausgleichende & geschlechterbewusste Teams)
     _add_column_if_missing(conn, "students", "strength", "INTEGER DEFAULT 3")
     _add_column_if_missing(conn, "students", "gender", "TEXT")
     _add_column_if_missing(conn, "draws", "balance", "TEXT DEFAULT 'random'")
@@ -165,19 +186,20 @@ def names_only(teams):
     return [[s["name"] for s in team] for team in teams]
 
 
+# Die shake_*-Funktionen liefern Teams als Listen von Schueler-Dicts (mit id),
+# damit Regeln/Abwechslung danach per Tausch optimiert werden koennen.
+
 def shake_random(students, team_count):
     shuffled = students[:]
     random.shuffle(shuffled)
-    teams = round_robin_distribute(shuffled, team_count)
-    return names_only(teams), None
+    return round_robin_distribute(shuffled, team_count), None
 
 
 def shake_strength(students, team_count):
     pool = students[:]
     random.shuffle(pool)  # Gleichstand zufaellig auflösen
     pool.sort(key=lambda s: s["strength"] if s["strength"] is not None else 3, reverse=True)
-    teams = snake_distribute(pool, team_count)
-    return names_only(teams), None
+    return snake_distribute(pool, team_count), None
 
 
 def shake_gender_mixed(students, team_count):
@@ -194,7 +216,7 @@ def shake_gender_mixed(students, team_count):
         for i in range(team_count):
             teams[i].extend(sub_teams[i])
         offset += len(members) % team_count
-    return names_only(teams), None
+    return teams, None
 
 
 def shake_gender_separate(students, mode, param):
@@ -217,9 +239,116 @@ def shake_gender_separate(students, mode, param):
         sub_teams = round_robin_distribute(members, tc)
         label = GENDER_LABELS.get(key, "Ohne Angabe")
         for i, team in enumerate(sub_teams, start=1):
-            all_teams.append([s["name"] for s in team])
+            all_teams.append(list(team))
             labels.append(f"{label} {i}" if len(sub_teams) > 1 else label)
     return all_teams, labels
+
+
+# ---------- Regeln / Abwechslung ----------
+
+def load_pairs(db, class_id):
+    rows = db.execute(
+        "SELECT id, a, b, kind FROM pairs WHERE class_id = ?", (class_id,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def recent_cooccurrence(db, class_id, students, limit=RECENT_DRAWS_FOR_VARIETY):
+    """Zaehlt, wie oft zwei Personen in den letzten Auslosungen im selben Team waren."""
+    ids_by_name = {}
+    for s in students:
+        ids_by_name.setdefault(s["name"], []).append(s["id"])
+    rows = db.execute(
+        "SELECT teams_json FROM draws WHERE class_id = ? ORDER BY id DESC LIMIT ?",
+        (class_id, limit),
+    ).fetchall()
+    co = {}
+    for r in rows:
+        payload = json.loads(r["teams_json"])
+        teams = payload.get("teams", []) if isinstance(payload, dict) else payload
+        for team in teams:
+            ids = []
+            for nm in team:
+                lst = ids_by_name.get(nm, [])
+                if len(lst) == 1:  # doppelte Namen sind nicht eindeutig -> ignorieren
+                    ids.append(lst[0])
+            for i in range(len(ids)):
+                for j in range(i + 1, len(ids)):
+                    key = (min(ids[i], ids[j]), max(ids[i], ids[j]))
+                    co[key] = co.get(key, 0) + 1
+    return co
+
+
+def team_penalty(teams, rules, co):
+    where = {}
+    for ti, team in enumerate(teams):
+        for s in team:
+            where[s["id"]] = ti
+    pen = 0
+    for p in rules:
+        ta, tb = where.get(p["a"]), where.get(p["b"])
+        if ta is None or tb is None:
+            continue
+        same = (ta == tb)
+        if p["kind"] == "apart" and same:
+            pen += RULE_WEIGHT
+        elif p["kind"] == "together" and not same:
+            pen += RULE_WEIGHT
+    if co:
+        for team in teams:
+            ids = sorted(s["id"] for s in team)
+            for i in range(len(ids)):
+                for j in range(i + 1, len(ids)):
+                    pen += co.get((ids[i], ids[j]), 0)
+    return pen
+
+
+def swap_key_fn(balance):
+    """Nur Personen mit gleichem Merkmal duerfen beim Nachbessern getauscht werden,
+    damit die gewaehlte Methode (Staerke/Geschlecht) erhalten bleibt."""
+    if balance == "strength":
+        return lambda s: s["strength"] if s["strength"] is not None else 3
+    if balance in ("gender_mixed", "gender_separate"):
+        return lambda s: s["gender"] if s["gender"] in ("m", "w", "d") else "unbekannt"
+    return lambda s: None
+
+
+def optimize_teams(teams, rules, co, key_fn, time_limit=OPTIMIZE_TIME_LIMIT):
+    best = team_penalty(teams, rules, co)
+    deadline = time.monotonic() + time_limit
+    improved = True
+    while improved and best > 0 and time.monotonic() < deadline:
+        improved = False
+        for i in range(len(teams)):
+            for j in range(i + 1, len(teams)):
+                if time.monotonic() > deadline:
+                    return teams
+                for x in range(len(teams[i])):
+                    for y in range(len(teams[j])):
+                        a, b = teams[i][x], teams[j][y]
+                        if key_fn(a) != key_fn(b):
+                            continue
+                        teams[i][x], teams[j][y] = b, a
+                        p = team_penalty(teams, rules, co)
+                        if p < best:
+                            best = p
+                            improved = True
+                        else:
+                            teams[i][x], teams[j][y] = a, b
+    return teams
+
+
+def find_violations(where, rules, id_names):
+    """where: Schueler-id -> Team-Index. Liefert alle nicht erfuellten Regeln."""
+    out = []
+    for p in rules:
+        ta, tb = where.get(p["a"]), where.get(p["b"])
+        if ta is None or tb is None:
+            continue
+        same = (ta == tb)
+        if (p["kind"] == "apart" and same) or (p["kind"] == "together" and not same):
+            out.append({"kind": p["kind"], "a": id_names.get(p["a"], "?"), "b": id_names.get(p["b"], "?")})
+    return out
 
 
 # ---------- Classes ----------
@@ -392,6 +521,65 @@ def clear_students(class_id):
     return jsonify({"ok": True})
 
 
+# ---------- Regeln (Paare: getrennt / zusammen) ----------
+
+@app.route("/api/classes/<int:class_id>/pairs", methods=["GET"])
+def list_pairs(class_id):
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT p.id, p.kind, p.a, p.b, sa.name AS a_name, sb.name AS b_name
+        FROM pairs p
+        JOIN students sa ON sa.id = p.a
+        JOIN students sb ON sb.id = p.b
+        WHERE p.class_id = ?
+        ORDER BY p.id
+        """,
+        (class_id,),
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/classes/<int:class_id>/pairs", methods=["POST"])
+def add_pair(class_id):
+    data = json_body()
+    try:
+        a = int(data.get("a"))
+        b = int(data.get("b"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Zwei Personen angeben (a, b)"}), 400
+    kind = data.get("kind", "apart")
+    if kind not in PAIR_KINDS:
+        return jsonify({"error": "kind muss 'apart' oder 'together' sein"}), 400
+    if a == b:
+        return jsonify({"error": "Bitte zwei verschiedene Personen wählen"}), 400
+    a, b = min(a, b), max(a, b)
+    db = get_db()
+    found = db.execute(
+        "SELECT COUNT(*) AS c FROM students WHERE class_id = ? AND id IN (?, ?)",
+        (class_id, a, b),
+    ).fetchone()["c"]
+    if found != 2:
+        return jsonify({"error": "Personen nicht in dieser Klasse gefunden"}), 404
+    try:
+        cur = db.execute(
+            "INSERT INTO pairs (class_id, a, b, kind) VALUES (?, ?, ?, ?)",
+            (class_id, a, b, kind),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Für dieses Paar existiert bereits eine Regel"}), 409
+    return jsonify({"id": cur.lastrowid}), 201
+
+
+@app.route("/api/pairs/<int:pair_id>", methods=["DELETE"])
+def delete_pair(pair_id):
+    db = get_db()
+    db.execute("DELETE FROM pairs WHERE id = ?", (pair_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 # ---------- Shake / Draws ----------
 
 @app.route("/api/classes/<int:class_id>/shake", methods=["POST"])
@@ -407,6 +595,8 @@ def shake(class_id):
         return jsonify({"error": "param muss eine Zahl sein"}), 400
     if param < 1:
         param = 1
+    use_rules = data.get("use_rules", True) is not False   # Regeln standardmaessig beachten
+    variety = data.get("variety") is True                   # Abwechslung nur auf Wunsch
 
     db = get_db()
     rows = db.execute(
@@ -417,39 +607,117 @@ def shake(class_id):
     if len(students) < 2:
         return jsonify({"error": "Mindestens 2 Namen erforderlich"}), 400
 
-    labels = None
     if balance == "strength":
         team_count = compute_team_count(mode, param, len(students))
-        teams, labels = shake_strength(students, team_count)
+        maker = lambda: shake_strength(students, team_count)
     elif balance == "gender_mixed":
         if not any(s["gender"] for s in students):
             return jsonify({"error": "Kein Geschlecht hinterlegt. Bitte bei Namen ergänzen."}), 400
         team_count = compute_team_count(mode, param, len(students))
-        teams, labels = shake_gender_mixed(students, team_count)
+        maker = lambda: shake_gender_mixed(students, team_count)
     elif balance == "gender_separate":
         if not any(s["gender"] for s in students):
             return jsonify({"error": "Kein Geschlecht hinterlegt. Bitte bei Namen ergänzen."}), 400
-        teams, labels = shake_gender_separate(students, mode, param)
+        maker = lambda: shake_gender_separate(students, mode, param)
     else:
         balance = "random"
         team_count = compute_team_count(mode, param, len(students))
-        teams, labels = shake_random(students, team_count)
+        maker = lambda: shake_random(students, team_count)
 
+    rules = load_pairs(db, class_id) if use_rules else []
+    co = recent_cooccurrence(db, class_id, students) if variety else {}
+
+    tries = CANDIDATES if (rules or co) else 1
+    candidates = [maker() for _ in range(tries)]
+    teams, labels = min(candidates, key=lambda c: team_penalty(c[0], rules, co))
+    if rules or co:
+        teams = optimize_teams(teams, rules, co, swap_key_fn(balance))
+
+    where = {s["id"]: ti for ti, team in enumerate(teams) for s in team}
+    id_names = {s["id"]: s["name"] for s in students}
+    violations = find_violations(where, rules, id_names)
+    team_names = names_only(teams)
+
+    options = {"variety": variety, "rules": bool(rules)}
     created_at = now_iso()
-    payload = {"teams": teams}
+    payload = {"teams": team_names, "options": options}
     if labels:
         payload["labels"] = labels
-    db.execute(
+    cur = db.execute(
         "INSERT INTO draws (class_id, created_at, mode, param, teams_json, balance) VALUES (?, ?, ?, ?, ?, ?)",
         (class_id, created_at, mode, param, json.dumps(payload, ensure_ascii=False), balance),
     )
+    draw_id = cur.lastrowid
     enforce_draw_limit(db, class_id)
     db.commit()
 
-    result = {"teams": teams, "created_at": created_at, "balance": balance}
+    result = {
+        "id": draw_id,
+        "teams": team_names,
+        "created_at": created_at,
+        "balance": balance,
+        "options": options,
+        "violations": violations,
+    }
     if labels:
         result["labels"] = labels
     return jsonify(result)
+
+
+@app.route("/api/draws/<int:draw_id>/swap", methods=["POST"])
+def swap_draw(draw_id):
+    """Tauscht zwei Personen innerhalb einer gespeicherten Auslosung.
+    Body: {"from": [team_index, position], "to": [team_index, position]}"""
+    data = json_body()
+    db = get_db()
+    row = db.execute(
+        "SELECT id, class_id, teams_json FROM draws WHERE id = ?", (draw_id,)
+    ).fetchone()
+    if not row:
+        return jsonify({"error": "Auslosung nicht gefunden"}), 404
+    payload = json.loads(row["teams_json"])
+    if not isinstance(payload, dict):
+        payload = {"teams": payload}
+    teams = payload.get("teams", [])
+    try:
+        ta, pa = [int(x) for x in data.get("from", [])]
+        tb, pb = [int(x) for x in data.get("to", [])]
+    except (TypeError, ValueError):
+        return jsonify({"error": "from/to müssen [Team, Position] sein"}), 400
+    if not (0 <= ta < len(teams) and 0 <= tb < len(teams)
+            and 0 <= pa < len(teams[ta]) and 0 <= pb < len(teams[tb])):
+        return jsonify({"error": "Ungültige Position"}), 400
+
+    teams[ta][pa], teams[tb][pb] = teams[tb][pb], teams[ta][pa]
+    payload["teams"] = teams
+    db.execute(
+        "UPDATE draws SET teams_json = ? WHERE id = ?",
+        (json.dumps(payload, ensure_ascii=False), draw_id),
+    )
+    db.commit()
+
+    class_id = row["class_id"]
+    students = db.execute(
+        "SELECT id, name FROM students WHERE class_id = ?", (class_id,)
+    ).fetchall()
+    name_ids = {}
+    id_names = {}
+    for s in students:
+        name_ids.setdefault(s["name"], []).append(s["id"])
+        id_names[s["id"]] = s["name"]
+    where = {}
+    for ti, team in enumerate(teams):
+        for nm in team:
+            ids = name_ids.get(nm, [])
+            if len(ids) == 1:
+                where[ids[0]] = ti
+    violations = find_violations(where, load_pairs(db, class_id), id_names)
+    return jsonify({
+        "ok": True,
+        "teams": teams,
+        "labels": payload.get("labels"),
+        "violations": violations,
+    })
 
 
 @app.route("/api/classes/<int:class_id>/history", methods=["GET"])
@@ -475,6 +743,7 @@ def history(class_id):
             "param": r["param"],
             "balance": r["balance"] or "random",
             "teams": payload.get("teams", payload) if isinstance(payload, dict) else payload,
+            "options": payload.get("options", {}) if isinstance(payload, dict) else {},
         }
         if isinstance(payload, dict) and payload.get("labels"):
             entry["labels"] = payload["labels"]
