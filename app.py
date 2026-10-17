@@ -2,7 +2,8 @@ import sqlite3
 import json
 import random
 import os
-from datetime import datetime
+import fcntl
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify, g, send_from_directory
 
 DB_PATH = os.environ.get("TEAMSHAKE_DB", "/data/teamshake.db")
@@ -13,11 +14,21 @@ app = Flask(__name__, static_folder="static", static_url_path="")
 GENDER_LABELS = {"m": "Jungen", "w": "Mädchen", "d": "Divers"}
 
 
+def now_iso():
+    # Gleiches Format wie bisher (naive UTC-Zeit), ohne deprecated utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+
+
+def json_body():
+    data = request.get_json(force=True, silent=True)
+    return data if isinstance(data, dict) else {}
+
+
 def get_db():
     db = getattr(g, "_database", None)
     if db is None:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        db = g._database = sqlite3.connect(DB_PATH)
+        db = g._database = sqlite3.connect(DB_PATH, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
     return db
@@ -36,9 +47,9 @@ def _add_column_if_missing(conn, table, column, coldef):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
 
 
-def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+def _init_db_locked():
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS classes (
@@ -80,11 +91,22 @@ def init_db():
     cur = conn.execute("SELECT COUNT(*) FROM classes")
     if cur.fetchone()[0] == 0:
         conn.execute(
-            "INSERT INTO classes (name, created_at) VALUES (?, ?)",
-            ("Meine Klasse", datetime.utcnow().isoformat()),
+            "INSERT OR IGNORE INTO classes (name, created_at) VALUES (?, ?)",
+            ("Meine Klasse", now_iso()),
         )
         conn.commit()
     conn.close()
+
+
+def init_db():
+    """Initialisierung mit Dateilock, damit mehrere Gunicorn-Worker nicht kollidieren."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    with open(DB_PATH + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            _init_db_locked()
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def enforce_draw_limit(db, class_id):
@@ -176,6 +198,11 @@ def shake_gender_mixed(students, team_count):
 
 
 def shake_gender_separate(students, mode, param):
+    """Bildet reine Gruppen je Geschlecht.
+
+    Achtung: `param` gilt PRO Geschlechtergruppe (mode=count: Teams je Gruppe,
+    mode=size: Spieler pro Team). Bei count=3 und zwei Gruppen entstehen 6 Teams.
+    """
     groups = {}
     for s in students:
         key = s["gender"] if s["gender"] in ("m", "w", "d") else "unbekannt"
@@ -213,7 +240,7 @@ def list_classes():
 
 @app.route("/api/classes", methods=["POST"])
 def create_class():
-    data = request.get_json(force=True)
+    data = json_body()
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Name erforderlich"}), 400
@@ -221,7 +248,7 @@ def create_class():
     try:
         db.execute(
             "INSERT INTO classes (name, created_at) VALUES (?, ?)",
-            (name, datetime.utcnow().isoformat()),
+            (name, now_iso()),
         )
         db.commit()
     except sqlite3.IntegrityError:
@@ -232,16 +259,18 @@ def create_class():
 
 @app.route("/api/classes/<int:class_id>", methods=["PUT"])
 def rename_class(class_id):
-    data = request.get_json(force=True)
+    data = json_body()
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "Name erforderlich"}), 400
     db = get_db()
     try:
-        db.execute("UPDATE classes SET name = ? WHERE id = ?", (name, class_id))
+        cur = db.execute("UPDATE classes SET name = ? WHERE id = ?", (name, class_id))
         db.commit()
     except sqlite3.IntegrityError:
         return jsonify({"error": "Name bereits vergeben"}), 409
+    if cur.rowcount == 0:
+        return jsonify({"error": "Klasse nicht gefunden"}), 404
     return jsonify({"ok": True})
 
 
@@ -284,13 +313,15 @@ def _normalize_strength(value):
 
 @app.route("/api/classes/<int:class_id>/students", methods=["POST"])
 def add_students(class_id):
-    data = request.get_json(force=True)
+    data = json_body()
     raw_names = data.get("names")
+    if raw_names is not None and not isinstance(raw_names, list):
+        return jsonify({"error": "names muss eine Liste sein"}), 400
     entries = []
     if raw_names is not None:
         for item in raw_names:
             if isinstance(item, dict):
-                nm = (item.get("name") or "").strip()
+                nm = str(item.get("name") or "").strip()
                 if nm:
                     entries.append(
                         (nm, _normalize_strength(item.get("strength")), _normalize_gender(item.get("gender")))
@@ -300,13 +331,15 @@ def add_students(class_id):
                 if nm:
                     entries.append((nm, 3, None))
     else:
-        single = (data.get("name") or "").strip()
+        single = str(data.get("name") or "").strip()
         if single:
             entries.append((single, _normalize_strength(data.get("strength")), _normalize_gender(data.get("gender"))))
 
     if not entries:
         return jsonify({"error": "Kein gültiger Name"}), 400
     db = get_db()
+    if not db.execute("SELECT 1 FROM classes WHERE id = ?", (class_id,)).fetchone():
+        return jsonify({"error": "Klasse nicht gefunden"}), 404
     db.executemany(
         "INSERT INTO students (class_id, name, strength, gender) VALUES (?, ?, ?, ?)",
         [(class_id, n, s, gd) for n, s, gd in entries],
@@ -317,12 +350,12 @@ def add_students(class_id):
 
 @app.route("/api/students/<int:student_id>", methods=["PUT"])
 def update_student(student_id):
-    data = request.get_json(force=True)
+    data = json_body()
     db = get_db()
     fields = []
     values = []
     if "name" in data:
-        name = (data.get("name") or "").strip()
+        name = str(data.get("name") or "").strip()
         if not name:
             return jsonify({"error": "Name darf nicht leer sein"}), 400
         fields.append("name = ?")
@@ -336,8 +369,10 @@ def update_student(student_id):
     if not fields:
         return jsonify({"error": "Keine Aenderung angegeben"}), 400
     values.append(student_id)
-    db.execute(f"UPDATE students SET {', '.join(fields)} WHERE id = ?", values)
+    cur = db.execute(f"UPDATE students SET {', '.join(fields)} WHERE id = ?", values)
     db.commit()
+    if cur.rowcount == 0:
+        return jsonify({"error": "Eintrag nicht gefunden"}), 404
     return jsonify({"ok": True})
 
 
@@ -361,10 +396,15 @@ def clear_students(class_id):
 
 @app.route("/api/classes/<int:class_id>/shake", methods=["POST"])
 def shake(class_id):
-    data = request.get_json(force=True)
+    data = json_body()
     mode = data.get("mode", "count")  # "count" or "size"
+    if mode not in ("count", "size"):
+        return jsonify({"error": "mode muss 'count' oder 'size' sein"}), 400
     balance = data.get("balance", "random")  # random | strength | gender_mixed | gender_separate
-    param = int(data.get("param", 2))
+    try:
+        param = int(data.get("param", 2))
+    except (TypeError, ValueError):
+        return jsonify({"error": "param muss eine Zahl sein"}), 400
     if param < 1:
         param = 1
 
@@ -395,7 +435,7 @@ def shake(class_id):
         team_count = compute_team_count(mode, param, len(students))
         teams, labels = shake_random(students, team_count)
 
-    created_at = datetime.utcnow().isoformat()
+    created_at = now_iso()
     payload = {"teams": teams}
     if labels:
         payload["labels"] = labels

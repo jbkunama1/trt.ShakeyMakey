@@ -1,4 +1,5 @@
 import os
+import html
 import functools
 import requests
 import telebot
@@ -31,6 +32,11 @@ BALANCE_LABELS = {
 }
 
 
+def esc(value):
+    """HTML-Escape fuer alle Nutzerdaten (Bot laeuft mit parse_mode=HTML)."""
+    return html.escape(str(value), quote=False)
+
+
 def is_allowed(user_id):
     if not ALLOWED_IDS:
         return False
@@ -56,9 +62,16 @@ def require_auth(func):
         try:
             func(message)
         except Exception as exc:  # noqa: BLE001
-            bot.reply_to(message, f"⚠️ Fehler: {exc}")
+            bot.reply_to(message, f"⚠️ Fehler: {esc(exc)}")
 
     return wrapper
+
+
+def _error_text(r):
+    try:
+        return r.json().get("error", "Unbekannter Fehler")
+    except ValueError:
+        return f"HTTP {r.status_code}"
 
 
 def api_get(path):
@@ -70,21 +83,21 @@ def api_get(path):
 def api_post(path, payload=None):
     r = requests.post(f"{API_BASE}{path}", json=payload or {}, timeout=10)
     if not r.ok:
-        raise RuntimeError(r.json().get("error", "Unbekannter Fehler"))
+        raise RuntimeError(_error_text(r))
     return r.json()
 
 
 def api_put(path, payload=None):
     r = requests.put(f"{API_BASE}{path}", json=payload or {}, timeout=10)
     if not r.ok:
-        raise RuntimeError(r.json().get("error", "Unbekannter Fehler"))
+        raise RuntimeError(_error_text(r))
     return r.json()
 
 
 def api_delete(path):
     r = requests.delete(f"{API_BASE}{path}", timeout=10)
     if not r.ok:
-        raise RuntimeError(r.json().get("error", "Unbekannter Fehler"))
+        raise RuntimeError(_error_text(r))
     return r.json() if r.text else {}
 
 
@@ -110,7 +123,7 @@ def format_teams(teams, labels=None):
     lines = []
     for idx, team in enumerate(teams, start=1):
         title = labels[idx - 1] if labels and idx - 1 < len(labels) else f"Team {idx}"
-        lines.append(f"<b>{title}</b> ({len(team)}): " + ", ".join(team))
+        lines.append(f"<b>{esc(title)}</b> ({len(team)}): " + ", ".join(esc(n) for n in team))
     return "\n".join(lines)
 
 
@@ -152,7 +165,8 @@ def cmd_help(message):
         "• <b>zufall</b> - rein zufällig (Standard)\n"
         "• <b>staerke</b> - gleicht hinterlegte Spielstärke (1-5) zwischen Teams aus\n"
         "• <b>geschlecht</b> - verteilt Jungen/Mädchen gleichmäßig auf alle Teams\n"
-        "• <b>trennen</b> - bildet reine Jungen- und reine Mädchenteams\n"
+        "• <b>trennen</b> - bildet reine Jungen- und reine Mädchenteams "
+        "(die Zahl gilt pro Gruppe: 3 Teams bei Jungen und Mädchen = 6 Teams)\n"
     )
     bot.reply_to(message, text)
     if not is_allowed(message.from_user.id):
@@ -166,7 +180,7 @@ def cmd_classes(message):
     if not classes:
         bot.reply_to(message, "Keine Klassen vorhanden.")
         return
-    lines = [f"• {c['name']} ({c['student_count']} Namen)" for c in classes]
+    lines = [f"• {esc(c['name'])} ({c['student_count']} Namen)" for c in classes]
     bot.reply_to(message, "📚 Klassen:\n" + "\n".join(lines))
 
 
@@ -175,15 +189,15 @@ def cmd_classes(message):
 def cmd_set_class(message):
     name = message.text.partition(" ")[2].strip()
     if not name:
-        bot.reply_to(message, "Nutzung: /klasse <Name>")
+        bot.reply_to(message, "Nutzung: /klasse &lt;Name&gt;")
         return
     classes = api_get("/classes")
     match = next((c for c in classes if c["name"].lower() == name.lower()), None)
     if not match:
         match = api_post("/classes", {"name": name})
-        bot.reply_to(message, f"✅ Neue Klasse '{name}' angelegt und aktiviert.")
+        bot.reply_to(message, f"✅ Neue Klasse '{esc(name)}' angelegt und aktiviert.")
     else:
-        bot.reply_to(message, f"✅ Klasse '{match['name']}' aktiviert.")
+        bot.reply_to(message, f"✅ Klasse '{esc(match['name'])}' aktiviert.")
     active_class[message.chat.id] = match["id"]
 
 
@@ -192,10 +206,10 @@ def cmd_set_class(message):
 def cmd_names(message):
     cid = get_active_class_id(message.chat.id)
     if cid is None:
-        bot.reply_to(message, "Keine Klasse vorhanden. Mit /klasse <Name> anlegen.")
+        bot.reply_to(message, "Keine Klasse vorhanden. Mit /klasse &lt;Name&gt; anlegen.")
         return
     students = api_get(f"/classes/{cid}/students")
-    label = class_label(cid)
+    label = esc(class_label(cid))
     if not students:
         bot.reply_to(message, f"Klasse '{label}': keine Namen.")
         return
@@ -203,7 +217,7 @@ def cmd_names(message):
     lines = []
     for s in students:
         sym = gender_symbol.get(s.get("gender"), "")
-        lines.append(f"{s['name']} (★{s.get('strength', 3)}{(' ' + sym) if sym else ''})")
+        lines.append(f"{esc(s['name'])} (★{s.get('strength', 3)}{(' ' + sym) if sym else ''})")
     bot.reply_to(message, f"👥 Klasse '{label}' ({len(lines)}):\n" + "\n".join(lines))
 
 
@@ -216,7 +230,7 @@ def cmd_add(message):
         return
     cid = get_active_class_id(message.chat.id)
     if cid is None:
-        bot.reply_to(message, "Erst eine Klasse anlegen: /klasse <Name>")
+        bot.reply_to(message, "Erst eine Klasse anlegen: /klasse &lt;Name&gt;")
         return
     names = [n.strip() for n in raw.replace("\n", ",").split(",") if n.strip()]
     api_post(f"/classes/{cid}/students", {"names": names})
@@ -228,7 +242,7 @@ def cmd_add(message):
 def cmd_remove(message):
     name = message.text.partition(" ")[2].strip()
     if not name:
-        bot.reply_to(message, "Nutzung: /entfernen <Name>")
+        bot.reply_to(message, "Nutzung: /entfernen &lt;Name&gt;")
         return
     cid = get_active_class_id(message.chat.id)
     if cid is None:
@@ -237,10 +251,10 @@ def cmd_remove(message):
     students = api_get(f"/classes/{cid}/students")
     match = next((s for s in students if s["name"].lower() == name.lower()), None)
     if not match:
-        bot.reply_to(message, f"'{name}' nicht gefunden.")
+        bot.reply_to(message, f"'{esc(name)}' nicht gefunden.")
         return
     api_delete(f"/students/{match['id']}")
-    bot.reply_to(message, f"🗑️ '{name}' entfernt.")
+    bot.reply_to(message, f"🗑️ '{esc(name)}' entfernt.")
 
 
 @bot.message_handler(commands=["leeren"])
@@ -259,7 +273,7 @@ def cmd_clear(message):
 def cmd_strength(message):
     parts = message.text.partition(" ")[2].strip().rsplit(" ", 1)
     if len(parts) != 2 or not parts[1].isdigit():
-        bot.reply_to(message, "Nutzung: /staerke <Name> <1-5>")
+        bot.reply_to(message, "Nutzung: /staerke &lt;Name&gt; &lt;1-5&gt;")
         return
     name, value = parts[0].strip(), int(parts[1])
     cid = get_active_class_id(message.chat.id)
@@ -269,10 +283,10 @@ def cmd_strength(message):
     students = api_get(f"/classes/{cid}/students")
     match = next((s for s in students if s["name"].lower() == name.lower()), None)
     if not match:
-        bot.reply_to(message, f"'{name}' nicht gefunden.")
+        bot.reply_to(message, f"'{esc(name)}' nicht gefunden.")
         return
     api_put(f"/students/{match['id']}", {"strength": value})
-    bot.reply_to(message, f"✅ Stärke von '{name}' auf {max(1, min(5, value))} gesetzt.")
+    bot.reply_to(message, f"✅ Stärke von '{esc(name)}' auf {max(1, min(5, value))} gesetzt.")
 
 
 @bot.message_handler(commands=["geschlecht"])
@@ -280,7 +294,7 @@ def cmd_strength(message):
 def cmd_gender(message):
     parts = message.text.partition(" ")[2].strip().rsplit(" ", 1)
     if len(parts) != 2:
-        bot.reply_to(message, "Nutzung: /geschlecht <Name> <m|w|d>")
+        bot.reply_to(message, "Nutzung: /geschlecht &lt;Name&gt; &lt;m|w|d&gt;")
         return
     name, value = parts[0].strip(), parts[1].strip().lower()
     gender = GENDER_MAP.get(value)
@@ -294,10 +308,10 @@ def cmd_gender(message):
     students = api_get(f"/classes/{cid}/students")
     match = next((s for s in students if s["name"].lower() == name.lower()), None)
     if not match:
-        bot.reply_to(message, f"'{name}' nicht gefunden.")
+        bot.reply_to(message, f"'{esc(name)}' nicht gefunden.")
         return
     api_put(f"/students/{match['id']}", {"gender": gender})
-    bot.reply_to(message, f"✅ Geschlecht von '{name}' gesetzt.")
+    bot.reply_to(message, f"✅ Geschlecht von '{esc(name)}' gesetzt.")
 
 
 @bot.message_handler(commands=["shake"])
@@ -306,7 +320,7 @@ def cmd_shake(message):
     raw = message.text.partition(" ")[2].strip()
     number, balance = parse_shake_args(raw)
     if number is None:
-        bot.reply_to(message, "Nutzung: /shake <Anzahl Teams> [zufall|staerke|geschlecht|trennen]")
+        bot.reply_to(message, "Nutzung: /shake &lt;Anzahl Teams&gt; [zufall|staerke|geschlecht|trennen]")
         return
     cid = get_active_class_id(message.chat.id)
     if cid is None:
@@ -323,7 +337,7 @@ def cmd_shake_size(message):
     raw = message.text.partition(" ")[2].strip()
     number, balance = parse_shake_args(raw)
     if number is None:
-        bot.reply_to(message, "Nutzung: /groesse <Spieler pro Team> [zufall|staerke|geschlecht|trennen]")
+        bot.reply_to(message, "Nutzung: /groesse &lt;Spieler pro Team&gt; [zufall|staerke|geschlecht|trennen]")
         return
     cid = get_active_class_id(message.chat.id)
     if cid is None:
@@ -352,7 +366,7 @@ def cmd_history(message):
     for entry in history_rows:
         bal_label = BALANCE_LABELS.get(entry.get("balance", "random"), entry.get("balance"))
         parts.append(
-            f"#{entry['id']} ({entry['created_at']}, {bal_label}):\n"
+            f"#{entry['id']} ({esc(entry['created_at'])}, {esc(bal_label)}):\n"
             + format_teams(entry["teams"], entry.get("labels"))
         )
     bot.reply_to(message, "\n\n".join(parts))
