@@ -1,6 +1,12 @@
 # docker-compose.yml fuer Portainer - Stack aus GHCR-Image beziehen
 # Nutzt das externe Docker-Netzwerk "highfishNetwork" (muss in Portainer/Docker
 # bereits existieren, z.B. fuer Reverse-Proxy/andere Services im selben Netz).
+#
+# Variablen im Portainer-Feld "Environment variables" pflegen (alle optional):
+#   TELEGRAM_BOT_TOKEN       Token von @BotFather (leer = Bot bleibt aus)
+#   TELEGRAM_ALLOWED_IDS     erlaubte Telegram-IDs, kommagetrennt (leer = Bot gesperrt)
+#   TELEGRAM_STARTUP_NOTIFY  1 = Startmeldung an erlaubte IDs, 0 = aus (Standard 1)
+#   TZ                       Zeitzone fuer die Startmeldung (Standard Europe/Berlin)
 services:
   shakeymakey:
     image: ghcr.io/jbkunama1/trt.shakeymakey:latest
@@ -13,10 +19,10 @@ services:
     environment:
       - TEAMSHAKE_DB=/data/teamshake.db
       - TEAMSHAKE_MAX_DRAWS=50
-      # Telegram-Bot (optional): Token von @BotFather, Liste erlaubter
-      # Telegram-User-IDs kommagetrennt. Leer lassen = Bot bleibt aus.
-      - TELEGRAM_BOT_TOKEN=
-      - TELEGRAM_ALLOWED_IDS=
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ALLOWED_IDS=${TELEGRAM_ALLOWED_IDS:-}
+      - TELEGRAM_STARTUP_NOTIFY=${TELEGRAM_STARTUP_NOTIFY:-1}
+      - TZ=${TZ:-Europe/Berlin}
     networks:
       - highfishNetwork
 
