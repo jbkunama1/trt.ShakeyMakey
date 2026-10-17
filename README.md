@@ -8,17 +8,21 @@ Container Registry).
 
 ## Funktionen
 
-- **Shake-Startseite (mobile-first)**: Klasse wählen, Aufteilung per Chips,
-  Teams/Je Team per Umschalter, Anzahl per Stepper (− / +) und ein am unteren
-  Rand fixierter **SHAKE!**-Button. Beim Öffnen wird die letzte Auslosung der
-  Klasse direkt angezeigt, dazu gibt es „Kopieren / Teilen“ und einen
-  Aufklapper „Letzte Auslosungen“ (die letzten 5)
-- **Admin-Menü** (⚙️ oben rechts): Klassen, Teilnehmer, Verlauf und App-Infos;
-  zerstörerische Aktionen liegen abgesetzt in der „Gefahrenzone“
+- **Shake-Startseite (mobile-first)**: Klasse wählen, Aufteilung als 2×2-Raster,
+  Zusatzoptionen (Abwechslung, Regeln), Teams/Je Team per Umschalter, Anzahl per
+  Stepper (− / +) und ein am unteren Rand fixierter **SHAKE!**-Button. Beim
+  Öffnen wird die letzte Auslosung der Klasse direkt angezeigt, dazu gibt es
+  „Kopieren / Teilen“, „Tauschen“ und einen Aufklapper „Letzte Auslosungen“
+  (die letzten 5)
+- **Admin-Menü** (⚙️ oben rechts): Klassen, Teilnehmer, Regeln, Verlauf und
+  App-Infos; zerstörerische Aktionen liegen abgesetzt in der „Gefahrenzone“
 - Mehrere Klassen (Listen) anlegen, umbenennen, löschen
 - Namen einzeln eingeben oder als Text-Import (Zeilenumbruch / Komma / Semikolon)
 - **Vier Aufteilungsmethoden**: Zufällig, Stärke ausgleichen, Geschlecht mischen,
-  Geschlecht trennen (siehe Abschnitt 6, angelehnt an Sportmethodik/Achtergarde)
+  Geschlecht trennen (siehe Abschnitt 6, angelehnt an gängige Sportmethodik)
+- **Drei Zusatzoptionen**: Regeln „getrennt / zusammen“ für einzelne Paare,
+  „Abwechslung“ (neue Teamkonstellationen bevorzugen) und nachträgliches
+  **Tauschen** zweier Personen im Ergebnis (siehe Abschnitt 6)
 - Jede Auslosung wird in SQLite gespeichert; pro Klasse bleiben automatisch nur
   die letzten **50 Auslosungen** erhalten (Round-Robin-Löschung der ältesten)
 - **Installierbare PWA**: Manifest, SVG-Icons, Service Worker (App-Shell offline
@@ -34,16 +38,17 @@ Container Registry).
 
 | Bereich | Inhalt |
 |---|---|
-| **Start (Shake)** | Klasse, Aufteilung (Zufall / Stärke / Mix / Getrennt), Teams oder Spieler pro Team, Stepper, SHAKE!, Ergebnis, Kopieren/Teilen, Letzte Auslosungen |
+| **Start (Shake)** | Klasse, Aufteilung (Zufall / Stärke / Mix / Getrennt), Optionen (🔀 Abwechslung, 📏 Regeln beachten), Teams oder Spieler pro Team, Stepper, SHAKE!, Ergebnis, Kopieren/Teilen, ✋ Tauschen, Letzte Auslosungen |
 | **Admin → Klassen** | Klasse auswählen, neu anlegen, umbenennen |
 | **Admin → Teilnehmer** | Namen hinzufügen/importieren, Stärke (★1-★5) und Geschlecht je Name, einzelne Namen entfernen |
+| **Admin → Regeln** | Paare festlegen, die 🚫 getrennt oder 🤝 zusammen sein sollen; Regeln ansehen und löschen |
 | **Admin → Verlauf** | Alle gespeicherten Auslosungen der Klasse (bis zu 50) |
 | **Admin → App** | Installieren-Button (Android/Chrome) und Hinweise |
 | **Gefahrenzone** | Alle Namen löschen, Verlauf löschen, Klasse löschen (jeweils mit Bestätigung) |
 
 Der Admin-Bereich ist unter `/#admin` erreichbar; die Zurück-Taste des Geräts
-führt zur Startseite. Die letzten Einstellungen (Klasse, Aufteilung, Modus,
-Anzahl) merkt sich die App pro Gerät im `localStorage`.
+führt zur Startseite. Die letzten Einstellungen (Klasse, Aufteilung, Optionen,
+Modus, Anzahl) merkt sich die App pro Gerät im `localStorage`.
 Sind in einer Klasse weniger als 2 Namen hinterlegt, ist SHAKE! deaktiviert und
 ein Hinweis führt direkt zu **Admin → Teilnehmer**.
 
@@ -127,11 +132,12 @@ Danach unter `http://<server-ip>:8091` erreichbar.
    gepusht hat.
 
 Die SQLite-Datenbank liegt im benannten Volume `shakeymakey_data` unter
-`/data/teamshake.db` und übersteht Redeploys/Updates. Neben der Datenbank
-legt die App dort eine Lock-Datei (`teamshake.db.lock`) und – wegen
-WAL-Modus – die Dateien `teamshake.db-wal` und `teamshake.db-shm` an. Für
-Backups das gesamte Volume sichern (oder alle zusammengehörigen Dateien
-kopieren).
+`/data/teamshake.db` und übersteht Redeploys/Updates. Neue Tabellen (z. B.
+`pairs` für die Regeln) legt die App beim Start automatisch an, bestehende
+Daten bleiben erhalten. Neben der Datenbank liegen im Volume eine Lock-Datei
+(`teamshake.db.lock`) und – wegen WAL-Modus – die Dateien `teamshake.db-wal`
+und `teamshake.db-shm`. Für Backups das gesamte Volume sichern (oder alle
+zusammengehörenden Dateien kopieren).
 
 ## 4. Als App installieren (PWA)
 
@@ -147,7 +153,7 @@ kopieren).
 > **Nach einem Update** kann der erste Aufruf noch die alte Oberfläche aus dem
 > Cache zeigen (Cache-first). Seite einmal neu laden bzw. die installierte
 > App schließen und neu öffnen. Bei größeren Frontend-Änderungen wird
-> `CACHE_NAME` in `static/service-worker.js` hochgezählt.
+> `CACHE_NAME` in `static/service-worker.js` hochgezählt (aktuell `v3`).
 
 ## 5. Telegram-Bot einrichten (optional)
 
@@ -207,6 +213,10 @@ unter den Ergebnissen von `/shake` und `/groesse` erscheinen die Buttons
 „Nochmal“ und „Menü“. Button-Aktionen sind wie die Befehle auf die erlaubten IDs
 beschränkt; alle anderen erhalten „Nicht autorisiert“.
 
+> **Regeln im Bot:** Die in der Web-App angelegten Regeln (getrennt/zusammen)
+> gelten automatisch auch für Auslosungen per Bot. Regeln anlegen,
+> „Abwechslung“ und „Tauschen“ gibt es derzeit nur in der Web-App.
+
 ### Verfügbare Befehle
 
 | Befehl | Wirkung |
@@ -238,14 +248,15 @@ Web-Oberfläche und Telegram greifen auf identische Daten zu.
 > Arbeitsspeicher. Nach einem Container-Neustart ist wieder die erste Klasse
 > aktiv - über das Menü (📚 Klassen) oder `/klasse <Name>` erneut wählen.
 
-## 6. Team-Aufteilungsmethoden (Sportmethodik / Achtergarde)
+## 6. Team-Aufteilungsmethoden und Zusatzoptionen
 
-Zusätzlich zur reinen Zufallsauslosung unterstützt ShakeyMakey drei weitere,
-in der Sportpädagogik dokumentierte Methoden zur fairen Teambildung (u. a.
-beschrieben im Sportmethodenhandbuch von Frank Achtergarde sowie in der
-Team-Bildungs-Theorie auf sportunterricht.ch) - jeweils digital nachgebildet,
-um die klassischen Nachteile (z. B. Bloßstellung leistungsschwacher Schüler
-beim „Wählen lassen“) zu vermeiden:
+### Aufteilungsmethoden (Sportmethodik)
+
+Zusätzlich zur reinen Zufallsauslosung unterstützt ShakeyMakey drei weitere, in
+der Sportpädagogik gängige Methoden zur fairen Teambildung (vgl. Übersichten zur
+Team-Bildung im Sportunterricht, z. B. auf sportunterricht.ch) - jeweils digital
+nachgebildet, um die klassischen Nachteile (z. B. Bloßstellung
+leistungsschwacher Schüler beim „Wählen lassen“) zu vermeiden:
 
 | Modus | Beschreibung | Voraussetzung |
 |---|---|---|
@@ -267,6 +278,31 @@ und `/geschlecht`. Beim Auslosen (Start-Seite, Bot-Menü bzw. `/shake`,
 > keiner Person ein Geschlecht hinterlegt, meldet die App/der Bot einen
 > Hinweis statt eine sinnlose Verteilung durchzuführen.
 
+### Zusatzoptionen
+
+Die Zusatzoptionen lassen sich mit jeder der vier Methoden kombinieren:
+
+| Option | Wirkung |
+|---|---|
+| 🚫 Regel „getrennt“ | Zwei Personen sollen nie im selben Team landen (z. B. „unzertrennliche“ Paare oder Konfliktpaare). Anlegen unter **Admin → Regeln**. |
+| 🤝 Regel „zusammen“ | Zwei Personen sollen im selben Team sein (z. B. aus Betreuungsgründen). |
+| 🔀 Abwechslung | Bevorzugt Teams, in denen möglichst wenige Personen schon in den **letzten 5 Auslosungen** der Klasse zusammen waren. |
+| ✋ Tauschen | Nach dem Auslosen zwei Namen antippen und tauschen. Die Änderung wird in der gespeicherten Auslosung (Verlauf) übernommen. |
+
+So arbeiten Regeln und Abwechslung: Die App erzeugt mehrere zufällige
+Teamvarianten, wählt die mit den wenigsten Regelverstößen bzw. Wiederholungen
+und bessert sie anschließend durch Tauschen nach. Getauscht werden dabei nur
+Personen mit **gleicher Stärke** (Methode „Stärke“) bzw. **gleichem
+Geschlecht** (Methoden „Mix“ und „Getrennt“), damit die gewählte Methode
+erhalten bleibt. Dadurch sind Regeln nicht in jedem Fall erfüllbar (z. B. kann
+ein Junge bei „Getrennt“ nicht mit einem Mädchen zusammen sein). Nicht
+erfüllte Regeln zeigt die App nach dem Auslosen und nach dem Tauschen als
+Hinweis an.
+
+> Regeln und die Abwechslung beziehen sich auf Personen über ihren Namen in der
+> Klasse; doppelte Namen innerhalb einer Klasse werden bei „Abwechslung“ und bei
+> der Regelprüfung nach dem Tauschen nicht zuverlässig unterschieden.
+
 ## API-Übersicht
 
 | Methode | Pfad | Zweck |
@@ -278,10 +314,14 @@ und `/geschlecht`. Beim Auslosen (Start-Seite, Bot-Menü bzw. `/shake`,
 | GET | /api/classes/<id>/students | Namen einer Klasse (inkl. strength, gender) |
 | POST | /api/classes/<id>/students | Namen hinzufügen `{name}` oder `{names:[...]}` (Strings oder `{name, strength, gender}`-Objekte); 404 bei unbekannter Klasse |
 | PUT | /api/students/<id> | Name/Stärke/Geschlecht einer Person ändern (404 bei unbekannter ID) |
-| DELETE | /api/students/<id> | Einzelnen Namen löschen |
+| DELETE | /api/students/<id> | Einzelnen Namen löschen (zugehörige Regeln werden mit entfernt) |
 | DELETE | /api/classes/<id>/students | Alle Namen einer Klasse löschen |
-| POST | /api/classes/<id>/shake | Auslosung `{mode: count oder size, param: n, balance: random, strength, gender_mixed oder gender_separate}`; ungültiger `mode`/`param` ergibt 400 |
-| GET | /api/classes/<id>/history | Letzte Auslosungen (max. `TEAMSHAKE_MAX_DRAWS`) |
+| GET | /api/classes/<id>/pairs | Regeln einer Klasse (`id`, `kind`, `a`, `b`, `a_name`, `b_name`) |
+| POST | /api/classes/<id>/pairs | Regel anlegen `{a, b, kind: apart oder together}` (a/b = Schüler-IDs; 404 bei Personen außerhalb der Klasse, 409 wenn für das Paar schon eine Regel existiert) |
+| DELETE | /api/pairs/<id> | Regel löschen |
+| POST | /api/classes/<id>/shake | Auslosung `{mode: count oder size, param: n, balance: random, strength, gender_mixed oder gender_separate, variety: true/false, use_rules: true/false}`; `use_rules` ist standardmäßig an, `variety` aus. Antwort enthält `id`, `teams`, `labels`, `options` und `violations` (nicht erfüllte Regeln). Ungültiger `mode`/`param` ergibt 400 |
+| POST | /api/draws/<id>/swap | Zwei Personen einer gespeicherten Auslosung tauschen `{from: [team, position], to: [team, position]}`; Antwort mit neuen `teams` und `violations` |
+| GET | /api/classes/<id>/history | Letzte Auslosungen (max. `TEAMSHAKE_MAX_DRAWS`), inkl. `options` |
 | DELETE | /api/classes/<id>/history | Verlauf einer Klasse löschen |
 | GET | /healthz | Healthcheck (auch vom Docker-Healthcheck genutzt) |
 
@@ -322,9 +362,10 @@ deinen anderen Stacks.
 
 ## Sicherheitshinweise
 
-- Die Web-App und die API haben **keine eigene Authentifizierung**. Klassen und
-  Schülernamen sind personenbezogene Daten - den Dienst daher nicht ungeschützt
-  ins Internet stellen, sondern z. B. hinter einem Reverse-Proxy mit Login
-  (etwa Cloudflare Access oder Basic Auth) oder nur im lokalen Netz betreiben.
+- Die Web-App und die API haben **keine eigene Authentifizierung**. Klassen,
+  Schülernamen und Regeln zwischen einzelnen Schülern sind personenbezogene
+  Daten - den Dienst daher nicht ungeschützt ins Internet stellen, sondern
+  z. B. hinter einem Reverse-Proxy mit Login (etwa Cloudflare Access oder Basic
+  Auth) oder nur im lokalen Netz betreiben.
 - Der Telegram-Bot ist über `TELEGRAM_ALLOWED_IDS` abgesichert (Fail-Closed).
   Den Bot-Token nicht ins Repo schreiben, sondern als Portainer-Variable setzen.

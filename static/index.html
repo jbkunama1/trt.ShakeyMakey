@@ -41,9 +41,14 @@
   .btn-secondary{background:#334155; color:var(--text);}
   .btn-danger{background:var(--danger); color:white;}
   .btn-small{padding:8px 10px; font-size:0.85rem;}
+  .btn-on{background:var(--accent) !important; color:#0f172a !important;}
   .chips{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px;}
   .chip{border-radius:12px; padding:12px 8px; min-height:48px; background:#334155; color:var(--text); font-size:0.9rem; text-align:center;}
   .chip.active{background:var(--accent); color:#0f172a;}
+  .opts{margin-top:4px;}
+  .opt{display:flex; align-items:center; gap:10px; min-height:48px; padding:8px 12px; background:#0f172a; border-radius:10px; margin-top:8px; font-size:0.9rem; color:var(--text); cursor:pointer;}
+  .opt input{width:22px; height:22px; flex:0 0 auto; margin:0;}
+  .opt small{display:block; color:var(--muted); font-size:0.72rem; font-weight:400;}
   .seg{display:flex; background:#0f172a; border-radius:12px; padding:4px; gap:4px; margin:10px 0;}
   .seg button{flex:1; background:transparent; color:var(--muted);}
   .seg button.active{background:var(--accent); color:#0f172a;}
@@ -60,8 +65,12 @@
   .team-card{border-radius:12px; padding:12px; color:#0f172a; font-weight:600;}
   .team-card h3{margin:0 0 8px; font-size:1rem;}
   .team-card ul{margin:0; padding-left:18px; font-weight:400; font-size:0.95rem;}
+  .team-card li.swappable{cursor:pointer; padding:6px 8px; margin-bottom:3px; border-radius:6px; background:rgba(15,23,42,0.15); list-style-position:inside;}
+  .team-card li.swappable.sel{background:#0f172a; color:#fff;}
+  .warn-box{background:#422006; border:1px solid #f59e0b; color:#fde68a; border-radius:10px; padding:10px 12px; font-size:0.85rem; margin-bottom:10px;}
+  .hint-box{background:#0c4a6e; border:1px solid var(--accent); color:#e0f2fe; border-radius:10px; padding:8px 12px; font-size:0.82rem; margin-bottom:10px;}
   .tabs{display:flex; gap:6px; margin-bottom:12px;}
-  .tabs button{flex:1; padding:10px 4px; font-size:0.85rem;}
+  .tabs button{flex:1; padding:10px 2px; font-size:0.8rem;}
   .tab-active{background:var(--accent) !important; color:#0f172a !important;}
   .tab-inactive{background:#334155; color:var(--text);}
   .muted{color:var(--muted); font-size:0.8rem;}
@@ -71,6 +80,11 @@
   .name-list li .nm{flex:1; min-width:90px;}
   .name-list li select{width:auto; margin:0; padding:4px 6px; font-size:0.85rem;}
   .name-list li button{background:none; color:var(--danger); font-size:1.1rem; padding:0 10px;}
+  .rule-list{list-style:none; padding:0; margin:0;}
+  .rule-list li{display:flex; align-items:center; gap:8px; background:#0f172a; padding:8px 10px; border-radius:8px; margin-bottom:6px; font-size:0.9rem;}
+  .rule-list .rn{flex:1; min-width:0; overflow-wrap:anywhere;}
+  .rule-list .rk{flex:0 0 auto; font-size:1.1rem;}
+  .rule-list button{background:none; color:var(--danger); font-size:1.1rem; padding:0 10px;}
   details.card summary{cursor:pointer; font-weight:600; color:var(--accent); min-height:36px; display:flex; align-items:center;}
   details.card[open] summary{margin-bottom:10px;}
   .history-item{background:#0f172a; border-radius:10px; padding:10px; margin-bottom:8px; font-size:0.85rem;}
@@ -112,6 +126,11 @@
     </div>
     <div class='info-box' id='balanceInfo'></div>
 
+    <div class='opts'>
+      <label class='opt'><input type='checkbox' id='optVariety'><span>🔀 Abwechslung<small>Neue Teamkonstellationen bevorzugen (letzte 5 Auslosungen)</small></span></label>
+      <label class='opt' id='optRulesWrap' style='display:none;'><input type='checkbox' id='optRules' checked><span>📏 Regeln beachten <span id='rulesCount'></span><small>Getrennt-/Zusammen-Regeln aus dem Admin-Menü</small></span></label>
+    </div>
+
     <div class='seg'>
       <button id='modeCountBtn' class='active'>Teams</button>
       <button id='modeSizeBtn'>Je Team</button>
@@ -131,9 +150,12 @@
   </div>
 
   <div class='muted' id='resultNote' style='margin:0 2px 8px;'></div>
+  <div class='warn-box' id='violationBox' style='display:none;'></div>
+  <div class='hint-box' id='swapHint' style='display:none;'>✋ Tippe zwei Namen an, um sie zu tauschen. Die Änderung wird im Verlauf gespeichert.</div>
   <div id='resultsArea'></div>
   <div class='row' id='shareRow' style='display:none; margin-bottom:14px;'>
     <button id='shareBtn' class='btn-secondary'>📋 Kopieren / Teilen</button>
+    <button id='swapBtn' class='btn-secondary'>✋ Tauschen</button>
   </div>
 
   <details class='card' id='recentDetails'>
@@ -156,6 +178,7 @@
   <div class='tabs' id='adminTabs'>
     <button data-tab='classes' class='tab-active'>Klassen</button>
     <button data-tab='students' class='tab-inactive'>Teilnehmer</button>
+    <button data-tab='rules' class='tab-inactive'>Regeln</button>
     <button data-tab='history' class='tab-inactive'>Verlauf</button>
     <button data-tab='app' class='tab-inactive'>App</button>
   </div>
@@ -189,6 +212,27 @@
     </div>
   </section>
 
+  <section id='adm-rules' style='display:none;'>
+    <div class='card'>
+      <h2>Neue Regel</h2>
+      <p class='muted'>🚫 getrennt: kommen nicht in dasselbe Team. 🤝 zusammen: sollen im selben Team sein. Regeln gelten für alle Methoden, soweit die Methode es zulässt (z. B. können Jungen und Mädchen bei „Getrennt“ nicht zusammen in einem Team sein). Werden Regeln nicht erfüllt, weist die App darauf hin.</p>
+      <label for='pairA'>Person A</label>
+      <select id='pairA'></select>
+      <label for='pairB'>Person B</label>
+      <select id='pairB'></select>
+      <label for='pairKind'>Art</label>
+      <select id='pairKind'>
+        <option value='apart'>🚫 getrennt</option>
+        <option value='together'>🤝 zusammen</option>
+      </select>
+      <button class='btn-primary' id='addPairBtn'>Regel speichern</button>
+    </div>
+    <div class='card'>
+      <h2>Regeln <span class='count-badge' id='pairCount'>0</span></h2>
+      <ul class='rule-list' id='pairList'></ul>
+    </div>
+  </section>
+
   <section id='adm-history' style='display:none;'>
     <div class='card'>
       <h2>Verlauf <span class='count-badge' id='historyCount'>0</span></h2>
@@ -205,8 +249,8 @@
     </div>
     <div class='card'>
       <h2>Info</h2>
-      <p class='muted'>ShakeyMakey speichert Klassen, Namen und Verlauf dauerhaft in SQLite auf dem Server. Deine Einstellungen (Klasse, Aufteilung, Anzahl) merkt sich nur dieses Gerät.</p>
-      <p class='muted'>Optional lässt sich alles auch per Telegram-Bot steuern (Befehl /menu mit Buttons, Startmeldung beim Containerstart). Einrichtung und Variablen: siehe README im Repository.</p>
+      <p class='muted'>ShakeyMakey speichert Klassen, Namen, Regeln und Verlauf dauerhaft in SQLite auf dem Server. Deine Einstellungen (Klasse, Aufteilung, Optionen, Anzahl) merkt sich nur dieses Gerät.</p>
+      <p class='muted'>Optional lässt sich vieles auch per Telegram-Bot steuern (Befehl /menu mit Buttons, Startmeldung beim Containerstart). Regeln gelten auch für Auslosungen per Bot. Einrichtung und Variablen: siehe README im Repository.</p>
     </div>
   </section>
 
@@ -237,9 +281,15 @@ const teamColors = ['#38bdf8','#f472b6','#facc15','#4ade80','#a78bfa','#fb923c',
 let classes = [];
 let activeClassId = null;
 let studentCount = 0;
+let studentsList = [];
+let pairs = [];
 let mode = 'count';
 let balance = 'random';
 let num = 2;
+let variety = false;
+let useRules = true;
+let swapMode = false;
+let swapSel = null;
 let lastResult = null;
 let recentRows = [];
 
@@ -251,10 +301,12 @@ function loadPrefs(){
     if(p.mode === 'count' || p.mode === 'size') mode = p.mode;
     if(BALANCE_INFO[p.balance]) balance = p.balance;
     if(Number.isInteger(p.num) && p.num >= 1 && p.num <= 64) num = p.num;
+    variety = (p.variety === true);
+    useRules = (p.useRules !== false);
   }catch(e){}
 }
 function savePrefs(){
-  try{ localStorage.setItem(STORE_KEY, JSON.stringify({classId: activeClassId, mode: mode, balance: balance, num: num})); }catch(e){}
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify({classId: activeClassId, mode: mode, balance: balance, num: num, variety: variety, useRules: useRules})); }catch(e){}
 }
 
 function showToast(msg){
@@ -311,11 +363,30 @@ function refreshClassSelects(){
   });
 }
 
+function updateSwapUi(){
+  $('swapBtn').textContent = swapMode ? '✅ Fertig' : '✋ Tauschen';
+  $('swapBtn').classList.toggle('btn-on', swapMode);
+  $('swapHint').style.display = swapMode ? 'block' : 'none';
+}
+
+function showViolations(list){
+  const box = $('violationBox');
+  if(!list || list.length === 0){ box.style.display = 'none'; box.textContent = ''; return; }
+  box.textContent = '⚠️ Nicht erfüllte Regeln: ' + list.map(v=>
+    v.a + ' & ' + v.b + ' (' + (v.kind === 'apart' ? 'sollten getrennt sein' : 'sollten zusammen sein') + ')'
+  ).join('; ');
+  box.style.display = 'block';
+}
+
 function clearResult(){
   lastResult = null;
+  swapMode = false;
+  swapSel = null;
+  updateSwapUi();
   $('resultsArea').innerHTML = '';
   $('resultNote').textContent = '';
   $('shareRow').style.display = 'none';
+  showViolations([]);
 }
 
 async function setActiveClass(id){
@@ -323,6 +394,7 @@ async function setActiveClass(id){
   savePrefs();
   clearResult();
   await loadStudents();
+  await loadPairs();
   await loadRecent();
   showLastDraw();
 }
@@ -345,8 +417,23 @@ function strengthSelectHtml(current){
   return out;
 }
 
+function populatePairSelects(){
+  ['pairA','pairB'].forEach(id=>{
+    const sel = $(id);
+    sel.innerHTML = '';
+    studentsList.forEach(s=>{
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name;
+      sel.appendChild(opt);
+    });
+  });
+  if(studentsList.length > 1){ $('pairB').selectedIndex = 1; }
+}
+
 async function loadStudents(){
   const students = await api('/classes/' + activeClassId + '/students');
+  studentsList = students;
   studentCount = students.length;
   const list = $('nameList');
   list.innerHTML = '';
@@ -381,6 +468,7 @@ async function loadStudents(){
     list.appendChild(li);
   });
   $('countBadge').textContent = students.length;
+  populatePairSelects();
   updateShakeState();
 }
 
@@ -395,6 +483,7 @@ function updateShakeState(){
 async function refreshAll(){
   await loadClasses();
   await loadStudents();
+  await loadPairs();
   await loadRecent();
   showLastDraw();
 }
@@ -457,7 +546,7 @@ $('importBtn').onclick = guard(async ()=>{
 });
 
 $('clearAllBtn').onclick = guard(async ()=>{
-  if(confirm('Wirklich alle Namen dieser Klasse löschen?')){
+  if(confirm('Wirklich alle Namen dieser Klasse löschen? (Regeln dieser Klasse werden ebenfalls entfernt.)')){
     await api('/classes/' + activeClassId + '/students', {method:'DELETE'});
     clearResult();
     await refreshAll();
@@ -471,7 +560,52 @@ $('clearHistoryBtn').onclick = guard(async ()=>{
   }
 });
 
-// ---------- Aufteilung / Modus / Anzahl ----------
+// ---------- Regeln (getrennt / zusammen) ----------
+async function loadPairs(){
+  pairs = await api('/classes/' + activeClassId + '/pairs');
+  const list = $('pairList');
+  list.innerHTML = '';
+  if(pairs.length === 0){
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'Noch keine Regeln angelegt.';
+    list.appendChild(li);
+  }
+  pairs.forEach(p=>{
+    const li = document.createElement('li');
+    const a = document.createElement('span'); a.className = 'rn'; a.textContent = p.a_name;
+    const k = document.createElement('span'); k.className = 'rk';
+    k.textContent = (p.kind === 'apart') ? '🚫' : '🤝';
+    k.setAttribute('aria-label', p.kind === 'apart' ? 'getrennt' : 'zusammen');
+    const b = document.createElement('span'); b.className = 'rn'; b.textContent = p.b_name;
+    const del = document.createElement('button'); del.textContent = '✕';
+    del.setAttribute('aria-label', 'Regel entfernen');
+    del.onclick = guard(async ()=>{
+      await api('/pairs/' + p.id, {method:'DELETE'});
+      await loadPairs();
+    });
+    li.appendChild(a); li.appendChild(k); li.appendChild(b); li.appendChild(del);
+    list.appendChild(li);
+  });
+  $('pairCount').textContent = pairs.length;
+  $('rulesCount').textContent = pairs.length ? '(' + pairs.length + ')' : '';
+  $('optRulesWrap').style.display = pairs.length ? 'flex' : 'none';
+}
+
+$('addPairBtn').onclick = guard(async ()=>{
+  const a = parseInt($('pairA').value, 10);
+  const b = parseInt($('pairB').value, 10);
+  if(!a || !b){ showToast('Bitte zwei Personen wählen.'); return; }
+  if(a === b){ showToast('Bitte zwei verschiedene Personen wählen.'); return; }
+  await api('/classes/' + activeClassId + '/pairs', {
+    method:'POST',
+    body: JSON.stringify({a: a, b: b, kind: $('pairKind').value})
+  });
+  await loadPairs();
+  showToast('Regel gespeichert.');
+});
+
+// ---------- Aufteilung / Optionen / Modus / Anzahl ----------
 function setBalance(key){
   balance = key;
   document.querySelectorAll('#balanceChips .chip').forEach(b=>{
@@ -483,6 +617,9 @@ function setBalance(key){
 document.querySelectorAll('#balanceChips .chip').forEach(b=>{
   b.onclick = ()=> setBalance(b.dataset.bal);
 });
+
+$('optVariety').onchange = (e)=>{ variety = e.target.checked; savePrefs(); };
+$('optRules').onchange = (e)=>{ useRules = e.target.checked; savePrefs(); };
 
 function setNum(v){
   num = Math.max(1, Math.min(64, v));
@@ -503,7 +640,7 @@ $('modeCountBtn').onclick = ()=> setMode('count', true);
 $('modeSizeBtn').onclick = ()=> setMode('size', true);
 
 // ---------- Ergebnis ----------
-function renderTeams(container, teams, labels){
+function renderTeams(container, teams, labels, onPick){
   container.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'teams-grid';
@@ -515,8 +652,13 @@ function renderTeams(container, teams, labels){
     const title = (labels && labels[idx]) ? labels[idx] : ('Team ' + (idx+1));
     h3.textContent = title + ' (' + team.length + ')';
     const ul = document.createElement('ul');
-    team.forEach(name=>{
+    team.forEach((name, pidx)=>{
       const li = document.createElement('li'); li.textContent = name;
+      if(onPick){
+        li.classList.add('swappable');
+        if(swapSel && swapSel[0] === idx && swapSel[1] === pidx) li.classList.add('sel');
+        li.onclick = ()=> onPick(idx, pidx);
+      }
       ul.appendChild(li);
     });
     card.appendChild(h3); card.appendChild(ul);
@@ -525,12 +667,40 @@ function renderTeams(container, teams, labels){
   container.appendChild(grid);
 }
 
-function showResult(teams, labels, note){
-  renderTeams($('resultsArea'), teams, labels);
+function renderResult(){
+  if(!lastResult) return;
+  renderTeams($('resultsArea'), lastResult.teams, lastResult.labels, swapMode ? pickForSwap : null);
+}
+
+function showResult(teams, labels, note, id){
+  lastResult = {id: id, teams: teams, labels: labels};
   $('resultNote').textContent = note || '';
   $('shareRow').style.display = 'flex';
-  lastResult = {teams: teams, labels: labels};
+  renderResult();
 }
+
+const pickForSwap = guard(async (t, p)=>{
+  if(!lastResult || !lastResult.id){ showToast('Tauschen ist für diese Auslosung nicht möglich.'); return; }
+  if(!swapSel){ swapSel = [t, p]; renderResult(); return; }
+  if(swapSel[0] === t && swapSel[1] === p){ swapSel = null; renderResult(); return; }
+  const from = swapSel;
+  swapSel = null;
+  const res = await api('/draws/' + lastResult.id + '/swap', {
+    method:'POST',
+    body: JSON.stringify({from: from, to: [t, p]})
+  });
+  lastResult.teams = res.teams;
+  renderResult();
+  showViolations(res.violations || []);
+  await loadRecent();
+});
+
+$('swapBtn').onclick = ()=>{
+  swapMode = !swapMode;
+  swapSel = null;
+  updateSwapUi();
+  renderResult();
+};
 
 function fmtDate(iso){
   return new Date(iso + 'Z').toLocaleString('de-DE');
@@ -539,7 +709,8 @@ function fmtDate(iso){
 function showLastDraw(){
   if(lastResult || recentRows.length === 0) return;
   const r = recentRows[0];
-  showResult(r.teams, r.labels, 'Letzte Auslosung · ' + fmtDate(r.created_at));
+  showResult(r.teams, r.labels, 'Letzte Auslosung · ' + fmtDate(r.created_at), r.id);
+  showViolations([]);
 }
 
 $('shakeBtn').onclick = guard(async ()=>{
@@ -550,9 +721,16 @@ $('shakeBtn').onclick = guard(async ()=>{
   try{
     const result = await api('/classes/' + activeClassId + '/shake', {
       method:'POST',
-      body: JSON.stringify({mode: mode, param: num, balance: balance})
+      body: JSON.stringify({mode: mode, param: num, balance: balance, variety: variety, use_rules: useRules})
     });
-    showResult(result.teams, result.labels, 'Neu ausgelost · ' + (balanceNames[result.balance] || result.balance));
+    const bits = [balanceNames[result.balance] || result.balance];
+    if(result.options && result.options.variety) bits.push('Abwechslung');
+    if(result.options && result.options.rules) bits.push('Regeln');
+    swapMode = false;
+    swapSel = null;
+    updateSwapUi();
+    showResult(result.teams, result.labels, 'Neu ausgelost · ' + bits.join(' · '), result.id);
+    showViolations(result.violations || []);
     await loadRecent();
     $('resultsArea').scrollIntoView({behavior:'smooth', block:'start'});
   } finally {
@@ -591,7 +769,10 @@ function renderHistory(area, rows){
     meta.className = 'meta';
     const modeLabel = row.mode === 'size' ? (row.param + ' pro Team') : (row.param + ' Teams');
     const balLabel = balanceNames[row.balance] || row.balance;
-    meta.textContent = '#' + row.id + ' — ' + fmtDate(row.created_at) + ' — ' + modeLabel + ' — ' + balLabel;
+    let text = '#' + row.id + ' — ' + fmtDate(row.created_at) + ' — ' + modeLabel + ' — ' + balLabel;
+    if(row.options && row.options.variety) text += ' — Abwechslung';
+    if(row.options && row.options.rules) text += ' — Regeln';
+    meta.textContent = text;
     div.appendChild(meta);
     row.teams.forEach((team, idx)=>{
       const line = document.createElement('div');
@@ -667,6 +848,9 @@ loadPrefs();
 setBalance(balance);
 setMode(mode, false);
 setNum(num);
+$('optVariety').checked = variety;
+$('optRules').checked = useRules;
+updateSwapUi();
 route();
 refreshAll().catch(e=>showToast(e.message || 'Fehler beim Laden'));
 </script>
