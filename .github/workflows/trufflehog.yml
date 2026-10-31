@@ -1,0 +1,23 @@
+name: Trufflehog
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  schedule:
+    - cron: '0 0 * * 0'
+
+jobs:
+  trufflehog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run TruffleHog
+        uses: trufflehog/trufflehog-actions@main
+        with:
+          path: ./
+          base: ""
+          head: "HEAD"
+          extra_args: --only-verified
